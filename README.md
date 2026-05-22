@@ -51,7 +51,7 @@ Diseñar e implementar una solución de ingeniería de datos basada en PostgreSQ
 # Arquitectura del Proyecto
 
 ```text
-Excel AMIE
+Archivo AMIE
     │
     ▼
  Extract
