@@ -1,0 +1,76 @@
+# =============================================================
+# .gitignore — practicum_datos
+# Python · PostgreSQL · Power BI · Windows
+# =============================================================
+
+# ── Credenciales — NUNCA subir al repositorio ──
+.env
+*.env
+.env.*
+
+# ── Datos crudos — archivos grandes, no van en Git ──
+data/
+*.xlsx
+*.xls
+*.csv
+*.db
+
+# ── Entornos virtuales ──
+venv/
+.venv/
+env/
+.env/
+ENV/
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+*.whl
+.installed.cfg
+
+# ── Jupyter ──
+.ipynb_checkpoints/
+*.ipynb
+
+# ── Power BI ──
+*.pbix
+*.pbit
+
+# ── IDEs ──
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.sublime-project
+*.sublime-workspace
+
+# ── Windows ──
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# ── macOS ──
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── Logs y temporales ──
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+~$*
