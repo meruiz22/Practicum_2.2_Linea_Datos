@@ -299,10 +299,6 @@ Indicadores:
 
 - Matrícula total
 - Instituciones activas
-- Participación femenina
-- Docentes
-- Ratio estudiante/docente
-
 ---
 
 # Dashboard Power BI
