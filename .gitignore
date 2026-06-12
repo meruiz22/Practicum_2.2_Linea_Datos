@@ -21,7 +21,7 @@ venv/
 env/
 .env/
 ENV/
-
+venv_datos/
 # ── Python ──
 __pycache__/
 *.py[cod]

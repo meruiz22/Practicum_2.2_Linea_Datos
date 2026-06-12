@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Practicum_2.2_Linea_Datos
 
 # Modelo Relacional, ETL Modular y Dashboard Analítico con PostgreSQL
@@ -52,7 +51,7 @@ Diseñar e implementar una solución de ingeniería de datos basada en PostgreSQ
 # Arquitectura del Proyecto
 
 ```text
-Archivo AMIE
+Excel AMIE
     │
     ▼
  Extract
@@ -300,6 +299,10 @@ Indicadores:
 
 - Matrícula total
 - Instituciones activas
+- Participación femenina
+- Docentes
+- Ratio estudiante/docente
+
 ---
 
 # Dashboard Power BI
@@ -454,5 +457,3 @@ Período analizado:
 ```
 
 ---
-=======
->>>>>>> 382115c (Modificaciones para el proyecto)

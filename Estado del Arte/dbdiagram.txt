@@ -1,0 +1,184 @@
+// =====================================================================
+// MODELO RELACIONAL — Macroentorno Económico Ecuador
+// Patrón estrella: 2 dimensiones centrales + 11 tablas de hechos/silver
+// =====================================================================
+
+// ---------------------------------------------------------------------
+// DIMENSIONES COMPARTIDAS
+// Actúan como diccionarios centrales del modelo.
+// Todas las tablas de hechos apuntan a una o ambas con FK.
+// ---------------------------------------------------------------------
+
+// Dimensión temporal — normaliza el tiempo en una sola fuente de verdad.
+// 7 tablas apuntan aquí: fact_macro_anual, fact_indicadores_diarios,
+// fact_empleo, silver_pib_real, silver_petroleo_riesgo, silver_iee, silver_vab
+Table dim_tiempo {
+  id_tiempo serial [pk, increment]  // clave primaria recibida por 7 FK
+  fecha date                         // fecha completa del registro
+  anio int                           // año — usado en filtros del dashboard
+  mes int                            // mes 1-12
+  trimestre int                      // trimestre 1-4
+}
+
+// Dimensión geográfica — normaliza nombres de provincias y cantones.
+// Resuelve que BCE escriba "Pichincha" y MINEDUC "PICHINCHA".
+// 5 tablas apuntan aquí: silver_vab, silver_supercias_ranking,
+// silver_supercias_directorio, silver_mineduc, silver_censo_actividad
+Table dim_geografia {
+  id_geo serial [pk, increment]  // clave primaria recibida por 5 FK
+  provincia varchar               // nombre normalizado en minúsculas
+  cod_provincia int               // código INEC de provincia
+  canton varchar                  // nombre del cantón
+  cod_canton int                  // código INEC de cantón
+}
+
+// ---------------------------------------------------------------------
+// TABLAS DE HECHOS — solo FK a dim_tiempo
+// Sin coordenada geográfica válida: datos nacionales o sin provincia.
+// ---------------------------------------------------------------------
+
+// Indicadores macroeconómicos anuales del BCE (1965-2024).
+// Alimenta la página P1 del dashboard.
+// Relación: N:1 con dim_tiempo (muchos años → una entrada de tiempo)
+Table fact_macro_anual {
+  id serial [pk, increment]
+  id_tiempo int [ref: > dim_tiempo.id_tiempo]  // FK temporal
+  pib_real_musd numeric           // PIB real en millones de USD
+  pib_percapita_nominal numeric   // PIB per cápita en USD corrientes
+  variacion_pib_pct numeric       // variación anual en porcentaje
+}
+
+// Precio del petróleo WTI y riesgo país — granularidad diaria.
+// Separada de fact_macro_anual porque tiene distinta granularidad (día vs año).
+// Alimenta la vista gold_petroleo_30dias en P1.
+// Relación: N:1 con dim_tiempo (miles de días → una entrada de tiempo)
+Table fact_indicadores_diarios {
+  id serial [pk, increment]
+  id_tiempo int [ref: > dim_tiempo.id_tiempo]  // FK temporal
+  precio_petroleo_wti numeric  // precio WTI en USD/barril
+  riesgo_pais_pb int           // riesgo país en puntos básicos EMBI
+}
+
+// Indicadores laborales ENEMDU — tasa de desempleo, subempleo, empleo adecuado.
+// Sin FK geográfica: la ENEMDU reporta nacional/urbano/rural, no por provincia.
+// Alimenta la página P2 del dashboard.
+// Relación: N:1 con dim_tiempo (varios indicadores por período → una entrada)
+Table fact_empleo {
+  id serial [pk, increment]
+  id_tiempo int [ref: > dim_tiempo.id_tiempo]  // FK temporal
+  indicador varchar        // tasa_desempleo, tasa_subempleo, empleo_adecuado
+  total_nacional numeric   // valor a nivel nacional
+  total_urbana numeric     // valor zona urbana
+  total_rural numeric      // valor zona rural
+}
+
+// ---------------------------------------------------------------------
+// TABLAS SILVER CON FK A dim_tiempo
+// Copias fieles de archivos fuente BCE — una tabla por archivo.
+// Se separan de las tablas fact para preservar el origen sin transformar.
+// ---------------------------------------------------------------------
+
+// Serie histórica PIB real del archivo retropolacion_1965_2024p.xlsx.
+// header=9 en la lectura porque el Excel tiene 9 filas de metadatos arriba.
+// 1965 tiene variacion_pct = NULL — correcto, no se elimina.
+// Relación: 1:1 con dim_tiempo (un año → una entrada de tiempo)
+Table silver_pib_real {
+  id serial [pk, increment]
+  id_tiempo int [ref: > dim_tiempo.id_tiempo]  // FK temporal
+  pib_musd numeric       // PIB nominal en millones de USD
+  poblacion bigint        // población total del año
+  pib_percapita numeric  // PIB per cápita en USD
+  variacion_pct numeric  // NULL en 1965 — primer año sin variación base
+}
+
+// Precio petróleo WTI y riesgo país — serie diaria del BCE.
+// Copia fiel del archivo fuente. fact_indicadores_diarios se construye desde aquí.
+// Relación: N:1 con dim_tiempo (registros diarios → una entrada de tiempo)
+Table silver_petroleo_riesgo {
+  id serial [pk, increment]
+  id_tiempo int [ref: > dim_tiempo.id_tiempo]  // FK temporal
+  precio_wti numeric       // precio en USD por barril
+  riesgo_pais_pb int       // puntos básicos EMBI Ecuador
+}
+
+// Índice de Expectativas Empresariales BCE — publicación mensual.
+// Sin FK geográfica: el IEE es un índice nacional, no tiene desglose provincial.
+// Alimenta la vista gold_iee_vs_pib (vista propia 6to ciclo).
+// Relación: N:1 con dim_tiempo (registros mensuales → una entrada de tiempo)
+Table silver_iee {
+  id serial [pk, increment]
+  id_tiempo int [ref: > dim_tiempo.id_tiempo]  // FK temporal
+  iee_global numeric    // índice global de expectativas
+  comercio numeric      // IEE sector comercio
+  manufactura numeric   // IEE sector manufactura
+}
+
+// ---------------------------------------------------------------------
+// TABLAS SILVER CON FK A dim_geografia (y silver_vab con doble FK)
+// Datos desagregados por provincia — permiten mapas y cruces geográficos.
+// ---------------------------------------------------------------------
+
+// Valor Agregado Bruto por provincia e industria — archivo BCE cuentas regionales.
+// ÚNICA tabla con doble FK: tiene provincia (id_geo) Y año (id_tiempo).
+// Alimenta la vista gold_vab_por_sector (vista propia 6to ciclo) en P2.
+// Relación: N:1 con dim_geografia Y N:1 con dim_tiempo
+Table silver_vab {
+  id serial [pk, increment]
+  id_geo int [ref: > dim_geografia.id_geo]      // FK geográfica
+  id_tiempo int [ref: > dim_tiempo.id_tiempo]   // FK temporal
+  ciiu varchar           // código de industria CIIU
+  vab_miles_usd numeric  // VAB en miles de USD
+}
+
+// Ranking de empresas Supercias — datos financieros de empresas grandes.
+// Sin FK temporal: el ranking es un corte anual, no una serie histórica.
+// Permite analizar concentración de ingresos por provincia en P3.
+// Relación: N:1 con dim_geografia (muchas empresas → una entrada geográfica)
+Table silver_supercias_ranking {
+  id serial [pk, increment]
+  id_geo int [ref: > dim_geografia.id_geo]  // FK geográfica
+  ruc varchar       // RUC de la empresa
+  nombre varchar    // razón social
+  ingresos numeric  // ingresos totales en USD
+  activos numeric   // total activos en USD
+  ciiu varchar      // sector de actividad económica CIIU
+}
+
+// Directorio de compañías Supercias — situación legal de todas las empresas.
+// Se filtra situacion_legal = ACTIVA en supercias.py antes de cargar.
+// Alimenta el conteo de empresas_activas en gold_bachilleres_vs_empresas.
+// Relación: N:1 con dim_geografia (muchas empresas → una entrada geográfica)
+Table silver_supercias_directorio {
+  id serial [pk, increment]
+  id_geo int [ref: > dim_geografia.id_geo]  // FK geográfica
+  ruc varchar              // RUC de la empresa
+  situacion_legal varchar  // solo ACTIVA después del filtro en ETL
+}
+
+// Estudiantes por provincia AMIE MINEDUC 2023-2024.
+// ETL usa encoding=latin-1 y sep=";" — el CSV viene así de MINEDUC.
+// Se filtra nivel_educacion = Bachillerato antes de cargar.
+// Alimenta gold_bachilleres_vs_empresas cruzando con el directorio Supercias.
+// Relación: N:1 con dim_geografia (muchos registros → una entrada geográfica)
+Table silver_mineduc {
+  id serial [pk, increment]
+  id_geo int [ref: > dim_geografia.id_geo]  // FK geográfica
+  ao_lectivo varchar         // ej: 2023-2024
+  nivel_educacion varchar    // Bachillerato, EGB, Superior
+  sostenimiento varchar      // fiscal, particular, fiscomisional
+  total_estudiantes int      // total de alumnos matriculados
+}
+
+// Personas ocupadas por rama de actividad — Censo de Población 2022 INEC.
+// Sin FK temporal: el censo es un corte único (no hay serie histórica).
+// Se cruza con silver_vab para analizar si provincias con mayor VAB
+// también concentran más empleo formal — análisis ejecutivo de P2.
+// Relación: N:1 con dim_geografia (muchas filas → una entrada geográfica)
+Table silver_censo_actividad {
+  id serial [pk, increment]
+  id_geo int [ref: > dim_geografia.id_geo]  // FK geográfica
+  ciiu varchar              // rama de actividad económica
+  sexo varchar              // hombre / mujer / total
+  grupo_edad varchar        // ej: 15-24, 25-34, 35-44
+  personas_ocupadas int     // conteo absoluto del censo
+} 
