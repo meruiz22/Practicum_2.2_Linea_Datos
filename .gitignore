@@ -73,4 +73,12 @@ $RECYCLE.BIN/
 *.bak
 *.swp
 *.swo
+
+# ── latex ──
+# Archivos generados por LaTeX
+*.aux
+*.fdb_latexmk
+*.fls
+*.out
+*.synctex.gz
 ~$*
