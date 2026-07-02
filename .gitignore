@@ -81,4 +81,8 @@ $RECYCLE.BIN/
 *.fls
 *.out
 *.synctex.gz
+
+macroentorno_pipeline/datos_crudos/
+practicum_datos/requirements.txt
+
 ~$*
