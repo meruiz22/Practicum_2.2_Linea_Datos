@@ -355,18 +355,3 @@ FROM pg_tables
 WHERE schemaname = 'public'
 ORDER BY tablename;
 
--- Resultado esperado (14 tablas):
--- dim_geografia
--- dim_tiempo
--- fact_empleo
--- fact_macro_anual
--- silver_censo
--- silver_enemdu
--- silver_iee
--- silver_mineduc
--- silver_petroleo_riesgo
--- silver_pib_nominal
--- silver_pib_real
--- silver_supercias_directorio
--- silver_supercias_ranking
--- silver_vab
