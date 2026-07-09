@@ -154,22 +154,6 @@ silver_petroleo_riesgo → dim_t     silver_mineduc        → dim_geografia
 silver_iee         → dim_tiempo    silver_censo_actividad → dim_geografia
 ```
 
-### Conteos esperados después de la carga
-
-| Tabla | Filas esperadas |
-|---|---|
-| `silver_pib_real` | 60 |
-| `silver_pib_nominal` | 26 |
-| `silver_vab` | 504 |
-| `silver_petroleo_riesgo` | ~8.500 |
-| `silver_iee` | 196 |
-| `silver_enemdu` | ~2.600 |
-| `silver_censo` / `silver_censo_actividad` | variable |
-| `silver_supercias_directorio` | ~338.000 |
-| `silver_supercias_ranking` | ~1.670.000 |
-| `silver_mineduc` | 16.206 |
-
----
 
 ## Vistas Gold (sql/gold_views.sql)
 
@@ -215,14 +199,4 @@ silver_iee         → dim_tiempo    silver_censo_actividad → dim_geografia
 
 ---
 
-## Próximos pasos
 
-1. **Ejecutar el pipeline en Ubuntu** — correr los 4 scripts y verificar conteos
-2. **`pipeline.py`** — detector de archivos RPA en `datos_macroentorno/`
-3. **Power BI** — conectar a PostgreSQL y construir las 3 páginas del dashboard
-4. **Acuerdo de integración con RPA** — documento formal (entregable semana 4)
-5. **Informe técnico** — 2 páginas: arquitectura + decisiones + hallazgos
-
----
-
-*Generado al finalizar Semana 4 — Semana 5 inicia con Power BI y pipeline.py*
