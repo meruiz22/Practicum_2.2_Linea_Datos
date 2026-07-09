@@ -1,458 +1,276 @@
-<<<<<<< HEAD
-# Practicum_2.2_Linea_Datos
-
-# Modelo Relacional, ETL Modular y Dashboard Analítico con PostgreSQL
-
-Proyecto desarrollado para la asignatura **Prácticum — Datos: Ingeniería, Analítica y Visualización** de la **Universidad Técnica Particular de Loja (UTPL)**.
-
-El proyecto implementa un proceso completo de ingeniería de datos utilizando el dataset histórico **AMIE (Archivo Maestro de Instituciones Educativas)** del Ministerio de Educación del Ecuador, integrando:
-
-- Diseño y normalización de base de datos.
-- Proceso ETL modular en Python.
-- Almacenamiento en PostgreSQL.
-- Consultas analíticas SQL.
-- Visualización mediante Power BI.
+# Pipeline de Datos del Macroentorno Ecuatoriano
+## Resumen técnico completo — 6to ciclo | Practicum 2.2 | Línea Datos
+**Universidad Técnica Particular de Loja**
 
 ---
 
-##  Autor
+## Qué es el proyecto
 
-**Martin Emanuel Ruiz Sánchez**
-
-Carrera de Computación  
-Universidad Técnica Particular de Loja (UTPL)
+Un pipeline de datos end-to-end que transforma archivos crudos de 9 fuentes públicas ecuatorianas en un dashboard analítico de Power BI que responde 3 preguntas estratégicas sobre la economía del Ecuador. Sigue la arquitectura medallón: **Bronze → Silver → Gold → Dashboard**.
 
 ---
 
-# Descripción del Proyecto
+## Cómo fluye la información
 
-El dataset **AMIE (Archivo Maestro de Instituciones Educativas)** contiene el registro histórico de instituciones educativas del Ecuador entre los años **2009 y 2024**.
-
-El objetivo principal consiste en transformar los datos originales en un modelo relacional optimizado para análisis, implementar un proceso ETL automatizado y generar indicadores para su visualización en Power BI.
-
----
-
-# Objetivos
-
-## Objetivo General
-
-Diseñar e implementar una solución de ingeniería de datos basada en PostgreSQL para el análisis histórico de instituciones educativas del Ecuador.
-
-## Objetivos Específicos
-
-- Extraer información desde archivos Excel históricos.
-- Limpiar y transformar los datos mediante Python.
-- Normalizar la información en un modelo relacional.
-- Cargar los datos en PostgreSQL.
-- Generar consultas analíticas para Power BI.
-- Construir indicadores educativos históricos.
-
----
-
-# Arquitectura del Proyecto
-
-```text
-Archivo AMIE
-    │
-    ▼
- Extract
-    │
-    ▼
- Transform
-    │
-    ▼
- Load
-    │
-    ▼
- PostgreSQL
-    │
-    ▼
- Power BI
+```
+FUENTES PÚBLICAS              BRONZE              SILVER (PostgreSQL)         GOLD (Vistas SQL)       DASHBOARD
+─────────────────             ──────              ──────────────────          ─────────────────       ─────────
+BCE (5 archivos)  ──────────► datos_crudos/  ──► transform/bce.py      ──► gold_pib_tendencia   ──► P1: Evolución
+INEC (2 archivos) ──────────►     bce/       ──► transform/inec.py     ──► gold_petroleo_30dias      economía
+Supercias (2 CSV) ──────────►     inec/      ──► transform/supercias.py──► gold_iee_vs_pib            20 años
+MINEDUC (1 CSV)   ──────────►     supercias/ ──► transform/mineduc.py  ──► gold_empleo_tendencia ──► P2: Sectores
+                              ─►  mineduc/                              ──► gold_vab_por_sector        y provincias
+Semana 5+:                                                              ──► gold_bachilleres     ──► P3: Bachilleres
+RPA deposita  ────────────►  datos_macroentorno/  ──► pipeline.py           _vs_empresas              vs empresas
+archivos auto.                                         (detecta y procesa)
 ```
 
 ---
 
-# Estructura del Proyecto
+## Estructura de carpetas del proyecto
 
-```text
-practicum_datos/
+```
+macroentorno_pipeline/          ← raíz del proyecto (en GitHub)
 │
-├── config.py
-├── .env
-├── requirements.txt
+├── .env                        ← credenciales PostgreSQL (NO en Git)
+├── .gitignore                  ← excluye datos_crudos/, .env, venv_datos/
+├── requirements.txt            ← dependencias Python
+├── pipeline.py                 ← orquestador semana 5 (detecta archivos RPA)
+├── leer_pib.py                 ← exploración inicial PIB (semana 1)
 │
-├── data/
-│   └── registro-administrativo-historico_2009-2024-inicio.xlsx
+├── transform/                  ← scripts ETL por fuente
+│   ├── bce.py                  ← limpia y carga 5 tablas Silver del BCE
+│   ├── inec.py                 ← limpia y carga ENEMDU + Censo 2022
+│   ├── supercias.py            ← limpia y carga ranking + directorio
+│   └── mineduc.py              ← limpia y carga AMIE 2023-2024
 │
-├── etl/
-│   ├── extract.py
-│   ├── transform.py
-│   ├── load.py
-│   └── pipeline.py
+├── sql/
+│   ├── create_tables.sql       ← crea 14 tablas en PostgreSQL
+│   └── gold_views.sql          ← crea 6 vistas Gold
 │
-└── sql/
-    ├── create_tables.sql
-    └── queries.sql
-```
-
-| Archivo | Descripción |
-|----------|-------------|
-| extract.py | Lectura del archivo |
-| transform.py | Limpieza y transformación de datos |
-| load.py | Inserción en PostgreSQL |
-| pipeline.py | Orquestador ETL |
-| create_tables.sql | Creación de tablas |
-| queries.sql | Consultas analíticas |
-
----
-
-#  Modelo Relacional
-
-El modelo se normaliza en tres tablas principales:
-
-## dim_ubicacion
-
-Dimensión geográfica que almacena:
-
-- Provincia
-- Cantón
-- Parroquia
-- Zona
-- Régimen escolar
-
-### Clave primaria
-
-```sql
-id_ubicacion
+├── datos_crudos/               ← Bronze (en .gitignore — no sube a Git)
+│   ├── bce/                    ← 7 archivos BCE
+│   ├── inec/                   ← 2 archivos INEC
+│   ├── supercias/              ← 2 archivos Supercias
+│   └── mineduc/                ← 1 archivo MINEDUC
+│
+├── datos_macroentorno/         ← carpeta donde RPA deposita archivos (semana 5+)
+│
+└── venv_datos/                 ← entorno virtual Python (en .gitignore)
 ```
 
 ---
 
-## dim_institucion
+## Archivos fuente (Bronze)
 
-Dimensión institucional con características relativamente estables:
+### Banco Central del Ecuador
+| Archivo | Fuente | Formato | Rango | Filas |
+|---|---|---|---|---|
+| `retropolacion_1965_2024p.xlsx` | BCE Cuentas Nacionales | Excel | 1965–2024 | 60 |
+| `pib-per-cpita-nominal.csv` | BCE | CSV sep=; | 2000–2025 | 26 |
+| `Boletin_retropolacion_regionales_2007_2024p_val.xlsx` | BCE Cuentas Regionales | Excel | 2007–2024 | wide→504 |
+| `petroleo_wti.csv` | BCE Sector Externo | CSV sep=; | 2015–2026 | 3.803 |
+| `petroleo_crudo_ecu.csv` | BCE Sector Externo | CSV sep=; | 2000–2026 | 315 |
+| `riesgo_pais.csv` | BCE Sector Externo | CSV sep=; | 2004–2026 | 7.303 |
+| `IEE_Nueva_Metodologia.xlsx` | BCE Encuestas | Excel | 2010–2026 | 196 |
 
-- Código AMIE
-- Nombre
-- Sostenimiento
-- Modalidad
-- Jornada
-- Área
-- Nivel educativo
+### INEC
+| Archivo | Fuente | Formato | Detalle |
+|---|---|---|---|
+| `202605_Tabulados_Mercado_Laboral_EXCEL.XLSX` | INEC ENEMDU | Excel | Estructura pivotada → melt() |
+| `CPV_2022_Población_Cantón.csv` | Censo 2022 | CSV | Nivel cantón, corte único |
 
-### Clave primaria
+### Supercias
+| Archivo | Formato | Filas |
+|---|---|---|
+| `bi_ranking.csv` | CSV sep=, | ~1.670.000 |
+| `bi_compania.csv` | CSV sep=, | ~338.000 |
 
-```sql
-cod_amie
-```
-
-### Clave foránea
-
-```sql
-id_ubicacion
-```
-
----
-
-## fact_matricula
-
-Tabla de hechos con indicadores anuales:
-
-- Total estudiantes
-- Estudiantes mujeres
-- Estudiantes hombres
-- Total docentes
-- Docentes mujeres
-- Docentes hombres
-- Ratio estudiante/docente
-
-### Clave primaria compuesta
-
-```sql
-(cod_amie, anio_lectivo)
-```
+### MINEDUC
+| Archivo | Formato | Filas | Detalle |
+|---|---|---|---|
+| `2_MINEDUC_RegistrosAdministrativos_2023-2024-Fin-1.csv` | CSV sep=; utf-8-sig | 16.206 | header=10 |
 
 ---
 
-# Diagrama ER
+## Scripts Python (transform/)
 
-```text
-DIM_UBICACION
-      │
-      │ 1:N
-      ▼
-DIM_INSTITUCION
-      │
-      │ 1:N
-      ▼
-FACT_MATRICULA
+### `bce.py` — 5 funciones, 5 tablas Silver
+
+```
+limpiar_pib_real()          → silver_pib_real         (60 filas anuales 1965-2024)
+limpiar_pib_nominal()       → silver_pib_nominal       (26 filas anuales 2000-2025)
+limpiar_vab()               → silver_vab               (504 filas: 28 prov × 18 años)
+limpiar_petroleo_riesgo()   → silver_petroleo_riesgo   (~8.500 filas diarias/mensuales)
+limpiar_iee()               → silver_iee               (196 filas mensuales 2010-2026)
 ```
 
----
+**Decisiones de limpieza documentadas:**
+- `retropolacion_1965_2024p.xlsx`: `header=9`, primeras 5 columnas, `2024 (p)` → entero, `variacion_pct` 1965 = NULL correcto
+- VAB: estructura wide → `melt()` a formato long
+- Petróleo: 3 CSVs separados con `merge outer` por fecha → NULLs documentados
+- IEE: `header=7`, valores fuera de [0,200] → NaN
 
-# Proceso ETL
+### `inec.py` — 2 funciones, 2 tablas Silver
 
-## Extract
-
-Lectura del archivo:
-
-```python
-pd.read_excel(...)
+```
+limpiar_enemdu()  → silver_enemdu   (estructura pivotada → melt(), periodo 'dic-07' → fecha real)
+limpiar_censo()   → silver_censo    (nivel cantón, COLS_MAPA ajustable)
 ```
 
-Funciones principales:
+### `supercias.py` — 2 funciones, 2 tablas Silver
 
-- Verificación de existencia del archivo.
-- Lectura de hojas Excel.
-- Estandarización inicial.
+```
+limpiar_ranking()    → silver_supercias_ranking    (~1.67M filas, lectura en chunks 100k)
+limpiar_directorio() → silver_supercias_directorio (~338k empresas, RUC validado 13 dígitos)
+```
 
----
+### `mineduc.py` — 1 función, 1 tabla Silver
 
-## Transform
-
-Limpieza y normalización de datos:
-
-### Correcciones aplicadas
-
-| Problema | Solución |
-|-----------|-----------|
-| Modallidad | modalidad |
-| "Inicio" en período | Eliminado |
-| Numéricos como texto | Conversión a integer |
-| Valores nulos | Reemplazados |
-| Duplicados | Eliminados |
-| División por cero | NULLIF |
-| Inconsistencias de género | Flag de control |
-
-Variables calculadas:
-
-```text
-ratio_est_docente
-inconsistente_genero
+```
+limpiar_mineduc() → silver_mineduc (header=10, calcula bach3_total, '-' → NULL)
 ```
 
 ---
 
-## Load
+## Base de datos PostgreSQL 18
 
-Carga hacia PostgreSQL utilizando:
+### 14 tablas en total
 
-```python
-SQLAlchemy
-psycopg2
+```
+DIMENSIONES (2)                    TABLAS FACT (3)
+───────────────────────────────    ────────────────────────────────────
+dim_tiempo                         fact_macro_anual      → dim_tiempo
+dim_geografia                      fact_indicadores_diarios → dim_tiempo
+                                   fact_empleo           → dim_tiempo
+
+TABLAS SILVER BCE (5)              TABLAS SILVER INEC/SUPER/MINE (4)
+───────────────────────────────    ────────────────────────────────────
+silver_pib_real    → dim_tiempo    silver_enemdu         → dim_tiempo
+silver_pib_nominal → dim_tiempo    silver_censo          → dim_geografia
+silver_vab   → dim_tiempo          silver_supercias_ranking → dim_geografia
+             → dim_geografia       silver_supercias_directorio → dim_geografia
+silver_petroleo_riesgo → dim_t     silver_mineduc        → dim_geografia
+silver_iee         → dim_tiempo    silver_censo_actividad → dim_geografia
 ```
 
-Operaciones:
+### Conteos esperados después de la carga
 
-- Inserción de dimensiones.
-- Obtención de claves.
-- Inserción de hechos.
-- Validación de integridad referencial.
-
----
-
-# Consultas Analíticas
-
-El proyecto incluye consultas SQL para responder preguntas relevantes del sector educativo.
-
-## KPI Nacional
-
-Obtiene:
-
-- Matrícula nacional
-- Docentes nacionales
-- Instituciones activas
-- Ratio estudiantes/docente
+| Tabla | Filas esperadas |
+|---|---|
+| `silver_pib_real` | 60 |
+| `silver_pib_nominal` | 26 |
+| `silver_vab` | 504 |
+| `silver_petroleo_riesgo` | ~8.500 |
+| `silver_iee` | 196 |
+| `silver_enemdu` | ~2.600 |
+| `silver_censo` / `silver_censo_actividad` | variable |
+| `silver_supercias_directorio` | ~338.000 |
+| `silver_supercias_ranking` | ~1.670.000 |
+| `silver_mineduc` | 16.206 |
 
 ---
 
-## Pregunta 1
+## Vistas Gold (sql/gold_views.sql)
 
-### ¿En qué provincias existe mayor carga docente?
-
-Indicadores:
-
-- Ratio estudiante/docente
-- Total estudiantes
-- Total docentes
-- Número de instituciones
-
----
-
-## Pregunta 2
-
-### ¿Qué nivel educativo presenta mayor brecha de género?
-
-Indicadores:
-
-- Mujeres
-- Hombres
-- % mujeres
-- % hombres
+| Vista | Dashboard | Tipo | Qué calcula |
+|---|---|---|---|
+| `gold_pib_tendencia` | P1 | Base | PIB + clasificación ciclo económico + variación per cápita |
+| `gold_petroleo_30dias` | P1 | Base | WTI + crudo ECU + promedio móvil 30 días + variación diaria |
+| `gold_empleo_tendencia` | P2 | Base | ENEMDU histórico: desempleo, subempleo, empleo adecuado |
+| `gold_bachilleres_vs_empresas` | P3 | Base | MINEDUC × Supercias por provincia + ratio bachilleres/empresa |
+| `gold_iee_vs_pib` | P1 | **6to ciclo** | IEE promedio anual vs variación PIB (indicador adelantado) |
+| `gold_vab_por_sector` | P2 | **6to ciclo** | VAB por provincia: participación %, ranking, variación anual |
 
 ---
 
-## Pregunta 3
+## Archivos del repositorio
 
-### ¿Cómo evolucionó la matrícula educativa en Loja entre 2009 y 2023?
-
-Indicadores:
-
-- Matrícula total
-- Instituciones activas
----
-
-# Dashboard Power BI
-
-El dashboard incluye:
-
-## KPIs principales
-
-- Matrícula nacional
-- Total docentes
-- Instituciones activas
-- Ratio estudiante/docente
-
-## Visualizaciones
-
-- Evolución temporal de matrícula
-- Distribución por género
-- Comparación por nivel educativo
-- Indicadores por sostenimiento
-- Ranking provincial
+| Archivo | Carpeta | Qué hace |
+|---|---|---|
+| `bce.py` | `transform/` | ETL fuentes BCE |
+| `inec.py` | `transform/` | ETL fuentes INEC |
+| `supercias.py` | `transform/` | ETL fuentes Supercias |
+| `mineduc.py` | `transform/` | ETL fuente MINEDUC |
+| `create_tables.sql` | `sql/` | Crea 14 tablas + 17 índices en PostgreSQL |
+| `gold_views.sql` | `sql/` | Crea 6 vistas Gold |
+| `requirements.txt` | raíz | Dependencias Python |
+| `dbdiagram.txt` | raíz o docs/ | Modelo ER para dbdiagram.io |
+| `GUIA_UBUNTU.md` | raíz | Guía de instalación en Ubuntu 22.04 |
+| `setup.sh` | raíz | Script de instalación automática Ubuntu |
+| `resumen_reto_final_6to_ciclo.md` | raíz | Estado del proyecto por semana |
 
 ---
 
-# Requisitos
-
-## Software
-
-- Python 3.10+
-- PostgreSQL 14+
-- Power BI Desktop
-
-## Entorno virtual 
-```bash
-python -m venv venv
-```
-## Librerías Python
+## Cómo ejecutar el proyecto desde cero en Ubuntu 22
 
 ```bash
-pip install pandas
-pip install openpyxl
-pip install sqlalchemy
-pip install psycopg2-binary
-pip install python-dotenv
-```
+# 1. Clonar el repositorio
+git clone https://github.com/TU_USUARIO/macroentorno_pipeline.git
+cd macroentorno_pipeline
+mkdir -p datos_crudos/{bce,inec,supercias,mineduc} datos_macroentorno
 
-o
+# 2. Instalar PostgreSQL 18
+sudo apt install -y curl ca-certificates
+sudo install -d /usr/share/postgresql-common/pgdg
+sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+  --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
+sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+  https://apt.postgresql.org/pub/repos/apt jammy-pgdg main" \
+  > /etc/apt/sources.list.d/pgdg.list'
+sudo apt update && sudo apt install -y postgresql-18
 
-```bash
+# 3. Crear base de datos
+sudo -u postgres psql -c "CREATE USER marti WITH PASSWORD 'marti2024';"
+sudo -u postgres psql -c "CREATE DATABASE macroentorno_ec OWNER marti;"
+
+# 4. Entorno virtual y dependencias
+python3 -m venv venv_datos
+source venv_datos/bin/activate
 pip install -r requirements.txt
+
+# 5. Archivo .env
+echo "DATABASE_URL=postgresql://marti:marti2024@localhost:5432/macroentorno_ec" > .env
+
+# 6. Copiar archivos de datos a datos_crudos/{bce,inec,supercias,mineduc}/
+
+# 7. Crear tablas
+psql -U marti -d macroentorno_ec -h localhost -f sql/create_tables.sql
+
+# 8. Ejecutar ETL
+python transform/bce.py
+python transform/inec.py
+python transform/supercias.py
+python transform/mineduc.py
+
+# 9. Crear vistas Gold
+psql -U marti -d macroentorno_ec -h localhost -f sql/gold_views.sql
 ```
 
 ---
 
-# Configuración
+## Estado del proyecto por semana del reto
 
-Crear un archivo `.env`
-
-```env
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=amie_mineduc
-DB_USER=postgres
-DB_PASSWORD=tu_password
-```
-
----
-
-# Ejecución
-
-## 1. Crear entorno virtual
-
-```bash
-python -m venv venv
-```
-
-Activar:
-
-### Windows
-
-```bash
-venv\Scripts\activate
-```
-
-### Linux / Mac
-
-```bash
-source venv/bin/activate
-```
+| Semana | Entregable | Estado |
+|---|---|---|
+| 1 — Entorno y diagrama | Diagrama ER aprobado + exploración PIB | ✅ Completa |
+| 2 — Limpieza BCE | `transform/bce.py` + 5 tablas Silver | ✅ Scripts listos |
+| 3 — Limpieza INEC/Supercias/MINEDUC | 3 scripts + 5 tablas Silver | ✅ Scripts listos |
+| 4 — Modelo relacional + vistas Gold | `create_tables.sql` + `gold_views.sql` | ✅ Completa |
+| 5 — Dashboard P1/P2 + integración RPA | Power BI + `pipeline.py` | ⬜ Pendiente |
+| 6 — Dashboard P3 + refinamiento | Página P3 + párrafos análisis | ⬜ Pendiente |
+| 7 — Documentación + demo | Informe técnico + presentación | ⬜ Pendiente |
 
 ---
 
-## 2. Instalar dependencias
+## Próximos pasos
 
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## 3. Crear tablas
-
-```bash
-psql -U postgres -d amie_mineduc -f sql/create_tables.sql
-```
+1. **Ejecutar el pipeline en Ubuntu** — correr los 4 scripts y verificar conteos
+2. **`pipeline.py`** — detector de archivos RPA en `datos_macroentorno/`
+3. **Power BI** — conectar a PostgreSQL y construir las 3 páginas del dashboard
+4. **Acuerdo de integración con RPA** — documento formal (entregable semana 4)
+5. **Informe técnico** — 2 páginas: arquitectura + decisiones + hallazgos
 
 ---
 
-## 4. Ejecutar ETL
-
-```bash
-python etl/pipeline.py
-```
-
----
-
-## 5. Conectar Power BI
-
-1. Obtener datos
-2. PostgreSQL
-3. Conectar a la base de datos
-4. Importar:
-
-- dim_ubicacion
-- dim_institucion
-- fact_matricula
-
----
-
-# Tecnologías Utilizadas
-
-- Python
-- Pandas
-- OpenPyXL
-- SQLAlchemy
-- PostgreSQL
-- Power BI
-- Git
-- GitHub
-
----
-
-# Fuente de Datos
-
-Ministerio de Educación del Ecuador
-
-**AMIE – Archivo Maestro de Instituciones Educativas**
-
-Período analizado:
-
-```text
-2009 - 2024
-```
-
----
-=======
->>>>>>> 382115c (Modificaciones para el proyecto)
+*Generado al finalizar Semana 4 — Semana 5 inicia con Power BI y pipeline.py*

@@ -1,25 +1,104 @@
 -- ============================================================
 --  sql/create_tables.sql
 --  Proyecto: macroentorno_pipeline
---  Semana 4 — Creación de todas las tablas Silver en PostgreSQL
---
---  Ejecutar:
---    psql -U marti -d macroentorno_ec -f sql/create_tables.sql
 -- ============================================================
 
 -- ────────────────────────────────────────────────────────────
 --  DROP en orden inverso de dependencias (idempotente)
+--  Primero las tablas que tienen FK, luego las dimensiones
 -- ────────────────────────────────────────────────────────────
-DROP TABLE IF EXISTS silver_mineduc             CASCADE;
-DROP TABLE IF EXISTS silver_supercias_ranking   CASCADE;
+DROP TABLE IF EXISTS silver_mineduc              CASCADE;
+DROP TABLE IF EXISTS silver_supercias_ranking    CASCADE;
 DROP TABLE IF EXISTS silver_supercias_directorio CASCADE;
-DROP TABLE IF EXISTS silver_censo               CASCADE;
-DROP TABLE IF EXISTS silver_enemdu              CASCADE;
-DROP TABLE IF EXISTS silver_iee                 CASCADE;
-DROP TABLE IF EXISTS silver_petroleo_riesgo     CASCADE;
-DROP TABLE IF EXISTS silver_vab                 CASCADE;
-DROP TABLE IF EXISTS silver_pib_nominal         CASCADE;
-DROP TABLE IF EXISTS silver_pib_real            CASCADE;
+DROP TABLE IF EXISTS silver_censo                CASCADE;
+DROP TABLE IF EXISTS silver_enemdu               CASCADE;
+DROP TABLE IF EXISTS silver_iee                  CASCADE;
+DROP TABLE IF EXISTS silver_petroleo_riesgo      CASCADE;
+DROP TABLE IF EXISTS silver_vab                  CASCADE;
+DROP TABLE IF EXISTS silver_pib_nominal          CASCADE;
+DROP TABLE IF EXISTS silver_pib_real             CASCADE;
+DROP TABLE IF EXISTS fact_macro_anual            CASCADE;
+DROP TABLE IF EXISTS fact_empleo                 CASCADE;
+-- Dimensiones al final porque las tablas anteriores apuntan a ellas
+DROP TABLE IF EXISTS dim_geografia               CASCADE;
+DROP TABLE IF EXISTS dim_tiempo                  CASCADE;
+
+-- ────────────────────────────────────────────────────────────
+--  DIMENSIONES COMPARTIDAS
+--  Se crean primero porque las tablas de hechos las referencian
+-- ────────────────────────────────────────────────────────────
+
+-- dim_tiempo
+-- Normaliza el tiempo en una sola fuente de verdad.
+-- 7 tablas apuntan aquí con FK:
+--   fact_macro_anual, fact_empleo, silver_pib_real,
+--   silver_petroleo_riesgo, silver_iee, silver_vab, silver_enemdu
+CREATE TABLE dim_tiempo (
+    id_tiempo   SERIAL      PRIMARY KEY,
+    fecha       DATE        NOT NULL UNIQUE,
+    anio        INTEGER     NOT NULL,   -- año — filtro principal del dashboard
+    mes         INTEGER,                -- 1-12 (NULL para registros anuales)
+    trimestre   INTEGER                 -- 1-4  (NULL para registros anuales/mensuales)
+);
+
+COMMENT ON TABLE  dim_tiempo IS 'Dimensión temporal compartida. Una fila por fecha única. 7 tablas apuntan aquí con FK.';
+COMMENT ON COLUMN dim_tiempo.mes       IS 'NULL para series anuales (silver_pib_real, silver_vab, fact_macro_anual).';
+COMMENT ON COLUMN dim_tiempo.trimestre IS 'NULL para series anuales y mensuales. Poblado para ENEMDU trimestral.';
+
+-- dim_geografia
+-- Normaliza nombres de provincias y cantones entre fuentes.
+-- Resuelve que BCE escriba "Pichincha" y MINEDUC "PICHINCHA".
+-- 5 tablas apuntan aquí con FK:
+--   silver_vab, silver_supercias_ranking, silver_supercias_directorio,
+--   silver_mineduc, silver_censo
+CREATE TABLE dim_geografia (
+    id_geo          SERIAL      PRIMARY KEY,
+    provincia       VARCHAR(60) NOT NULL,   -- nombre normalizado title case
+    cod_provincia   CHAR(2)     NOT NULL,   -- código INEC con zfill(2)
+    canton          VARCHAR(80),            -- nombre del cantón (NULL si solo provincia)
+    cod_canton      CHAR(4),                -- código INEC con zfill(4)
+    UNIQUE (cod_provincia, cod_canton)
+);
+
+COMMENT ON TABLE  dim_geografia IS 'Dimensión geográfica compartida. Normaliza nombres entre BCE, INEC, Supercias y MINEDUC. 5 tablas apuntan aquí con FK.';
+COMMENT ON COLUMN dim_geografia.cod_provincia IS 'Código INEC con zfill(2). Ej: "01" = Azuay.';
+COMMENT ON COLUMN dim_geografia.canton        IS 'NULL cuando el registro es solo a nivel provincial.';
+
+-- ────────────────────────────────────────────────────────────
+--  TABLAS FACT (agregadas — alimentan directamente las vistas Gold)
+-- ────────────────────────────────────────────────────────────
+
+-- fact_macro_anual
+-- Consolida los indicadores macroeconómicos anuales nacionales.
+-- Alimenta: gold_pib_tendencia (P1 dashboard)
+CREATE TABLE fact_macro_anual (
+    id_tiempo       INTEGER     PRIMARY KEY REFERENCES dim_tiempo(id_tiempo),
+    pib_musd        NUMERIC(14,4),
+    pib_percapita   NUMERIC(12,4),
+    variacion_pct   NUMERIC(8,4),
+    pib_percapita_nominal_usd NUMERIC(12,2)
+);
+
+COMMENT ON TABLE fact_macro_anual IS 'Indicadores macroeconómicos anuales consolidados. Fuente: silver_pib_real + silver_pib_nominal. Alimenta gold_pib_tendencia.';
+
+-- fact_empleo
+-- Indicadores laborales ENEMDU nacionales/urbanos/rurales.
+-- Sin FK a dim_geografia: ENEMDU no tiene desagregación provincial.
+-- Alimenta: gold_empleo_tendencia (P2 dashboard)
+CREATE TABLE fact_empleo (
+    id              SERIAL      PRIMARY KEY,
+    id_tiempo       INTEGER     NOT NULL REFERENCES dim_tiempo(id_tiempo),
+    encuesta        VARCHAR(20),
+    periodo         VARCHAR(10),
+    indicador       VARCHAR(120) NOT NULL,
+    total_nacional  NUMERIC(10,6),
+    total_urbana    NUMERIC(10,6),
+    total_rural     NUMERIC(10,6),
+    UNIQUE (id_tiempo, indicador)
+);
+
+COMMENT ON TABLE  fact_empleo IS 'Indicadores ENEMDU en formato long. Sin FK a dim_geografia (ENEMDU es nacional/urbano/rural, no provincial).';
+COMMENT ON COLUMN fact_empleo.indicador IS 'Ej: "Empleo Adecuado/Pleno (%)", "Desempleo (%)".';
 
 -- ────────────────────────────────────────────────────────────
 --  1. silver_pib_real
@@ -241,6 +320,17 @@ COMMENT ON COLUMN silver_mineduc.nivel_educacion IS 'No filtrado aquí. Filtrar 
 -- ────────────────────────────────────────────────────────────
 --  Índices para mejorar rendimiento de las vistas Gold
 -- ────────────────────────────────────────────────────────────
+-- Dimensiones
+CREATE INDEX idx_tiempo_anio         ON dim_tiempo(anio);
+CREATE INDEX idx_tiempo_fecha        ON dim_tiempo(fecha);
+CREATE INDEX idx_geo_cod_provincia   ON dim_geografia(cod_provincia);
+CREATE INDEX idx_geo_provincia       ON dim_geografia(provincia);
+
+-- Tablas fact
+CREATE INDEX idx_fact_empleo_tiempo  ON fact_empleo(id_tiempo);
+CREATE INDEX idx_fact_empleo_ind     ON fact_empleo(indicador);
+
+-- Silver
 CREATE INDEX idx_vab_anio           ON silver_vab(anio);
 CREATE INDEX idx_vab_provincia      ON silver_vab(cod_provincia);
 CREATE INDEX idx_petroleo_fecha     ON silver_petroleo_riesgo(fecha);
@@ -259,8 +349,24 @@ CREATE INDEX idx_censo_provincia    ON silver_censo(provincia);
 --  Verificación final
 -- ────────────────────────────────────────────────────────────
 SELECT
-    tablename,
-    pg_size_pretty(pg_total_relation_size(quote_ident(tablename))) AS tamaño
+    tablename                                                           AS tabla,
+    pg_size_pretty(pg_total_relation_size(quote_ident(tablename)))     AS tamaño
 FROM pg_tables
 WHERE schemaname = 'public'
 ORDER BY tablename;
+
+-- Resultado esperado (14 tablas):
+-- dim_geografia
+-- dim_tiempo
+-- fact_empleo
+-- fact_macro_anual
+-- silver_censo
+-- silver_enemdu
+-- silver_iee
+-- silver_mineduc
+-- silver_petroleo_riesgo
+-- silver_pib_nominal
+-- silver_pib_real
+-- silver_supercias_directorio
+-- silver_supercias_ranking
+-- silver_vab
