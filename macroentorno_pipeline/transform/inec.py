@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/macroentorno_ec")
 
-BASE        = os.path.expanduser("~/macroentorno_pipeline")
+BASE        = os.path.expanduser("/home/mar/Documentos/Practicum 2.2/Practicum_2.2_Linea_Datos/macroentorno_pipeline")
 BRONZE_INEC = os.path.join(BASE, "datos_crudos", "inec")
 
 
