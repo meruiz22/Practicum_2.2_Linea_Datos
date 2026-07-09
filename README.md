@@ -196,56 +196,8 @@ silver_iee         → dim_tiempo    silver_censo_actividad → dim_geografia
 | `gold_views.sql` | `sql/` | Crea 6 vistas Gold |
 | `requirements.txt` | raíz | Dependencias Python |
 | `dbdiagram.txt` | raíz o docs/ | Modelo ER para dbdiagram.io |
-| `GUIA_UBUNTU.md` | raíz | Guía de instalación en Ubuntu 22.04 |
-| `setup.sh` | raíz | Script de instalación automática Ubuntu |
-| `resumen_reto_final_6to_ciclo.md` | raíz | Estado del proyecto por semana |
 
 ---
-
-## Cómo ejecutar el proyecto desde cero en Ubuntu 22
-
-```bash
-# 1. Clonar el repositorio
-git clone https://github.com/TU_USUARIO/macroentorno_pipeline.git
-cd macroentorno_pipeline
-mkdir -p datos_crudos/{bce,inec,supercias,mineduc} datos_macroentorno
-
-# 2. Instalar PostgreSQL 18
-sudo apt install -y curl ca-certificates
-sudo install -d /usr/share/postgresql-common/pgdg
-sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
-  --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
-sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
-  https://apt.postgresql.org/pub/repos/apt jammy-pgdg main" \
-  > /etc/apt/sources.list.d/pgdg.list'
-sudo apt update && sudo apt install -y postgresql-18
-
-# 3. Crear base de datos
-sudo -u postgres psql -c "CREATE USER marti WITH PASSWORD 'marti2024';"
-sudo -u postgres psql -c "CREATE DATABASE macroentorno_ec OWNER marti;"
-
-# 4. Entorno virtual y dependencias
-python3 -m venv venv_datos
-source venv_datos/bin/activate
-pip install -r requirements.txt
-
-# 5. Archivo .env
-echo "DATABASE_URL=postgresql://marti:marti2024@localhost:5432/macroentorno_ec" > .env
-
-# 6. Copiar archivos de datos a datos_crudos/{bce,inec,supercias,mineduc}/
-
-# 7. Crear tablas
-psql -U marti -d macroentorno_ec -h localhost -f sql/create_tables.sql
-
-# 8. Ejecutar ETL
-python transform/bce.py
-python transform/inec.py
-python transform/supercias.py
-python transform/mineduc.py
-
-# 9. Crear vistas Gold
-psql -U marti -d macroentorno_ec -h localhost -f sql/gold_views.sql
-```
 
 ---
 
