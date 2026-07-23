@@ -465,6 +465,30 @@ def procesar_supercias(engine, df_tc):
     if df.empty:
         log("  Sin datos."); return
 
+    # Mapa nombre provincia → código INEC
+    PROV_CODIGOS = {
+        "AZUAY": "01", "BOLIVAR": "02", "CAÑAR": "03", "CARCHI": "04",
+        "CHIMBORAZO": "06", "COTOPAXI": "05", "EL ORO": "07",
+        "ESMERALDAS": "08", "GALAPAGOS": "20", "GUAYAS": "09",
+        "IMBABURA": "10", "LOJA": "11", "LOS RIOS": "12",
+        "MANABI": "13", "MORONA SANTIAGO": "14", "NAPO": "15",
+        "ORELLANA": "21", "PASTAZA": "16", "PICHINCHA": "17",
+        "SANTA ELENA": "24", "SANTO DOMINGO DE LOS TSACHILAS": "23",
+        "SUCUMBIOS": "19", "TUNGURAHUA": "18", "ZAMORA CHINCHIPE": "22",
+        "ZONA EN ESTUDIO": "90"
+    }
+
+    def normalizar(texto):
+        if not texto:
+            return ""
+        import unicodedata
+        texto = texto.upper().strip()
+        texto = ''.join(
+            c for c in unicodedata.normalize('NFD', texto)
+            if unicodedata.category(c) != 'Mn'
+        )
+        return texto
+
     insertados = 0
     with engine.begin() as conn:
         for _, row in df.iterrows():
@@ -473,11 +497,15 @@ def procesar_supercias(engine, df_tc):
             emp = datos.get("empresa_metadata", {})
             ubi = datos.get("ubicacion", {})
             fin = datos.get("financiero_ciiu", {})
+
+            provincia_raw = ubi.get("provincia", "")
+            prov_norm     = normalizar(provincia_raw)
+            cod_prov      = PROV_CODIGOS.get(prov_norm, "90")
+
             id_geo = upsert_dim_geografia(
                 conn,
-                provincia=ubi.get("provincia","SIN DATO"),
-                cod_prov=str(ubi.get("cod_provincia","00")).zfill(2)
-                         if ubi.get("cod_provincia") else "00",
+                provincia=provincia_raw.title() if provincia_raw else "Sin Dato",
+                cod_prov=cod_prov,
                 canton=ubi.get("canton")
             )
             conn.execute(text("""
@@ -487,22 +515,25 @@ def procesar_supercias(engine, df_tc):
                      capital_suscrito, ultimo_balance_anio, fecha_extraccion)
                 VALUES (:ig,:per,:exp,:ruc,:nom,:sl,:tc,:c1,:c6,:cap,:ub,:fext)
                 ON CONFLICT (expediente, periodo_reporte) DO UPDATE SET
+                    id_geo=EXCLUDED.id_geo,
                     situacion_legal=EXCLUDED.situacion_legal,
                     fecha_extraccion=EXCLUDED.fecha_extraccion
             """), {
-                "ig": id_geo, "per": datos.get("periodo_reporte"),
+                "ig":  id_geo,
+                "per": datos.get("periodo_reporte"),
                 "exp": int(emp.get("expediente", 0)),
                 "ruc": emp.get("ruc"),
                 "nom": emp.get("nombre","").title() if emp.get("nombre") else None,
                 "sl":  emp.get("situacion_legal"),
                 "tc":  emp.get("tipo_compania"),
-                "c1":  fin.get("ciiu_nivel1"), "c6": fin.get("ciiu_nivel6"),
+                "c1":  fin.get("ciiu_nivel1"),
+                "c6":  fin.get("ciiu_nivel6"),
                 "cap": fin.get("capital_suscrito"),
                 "ub":  int(str(fin["ultimo_balance_anio"]).strip())
                        if fin.get("ultimo_balance_anio") and
                           str(fin.get("ultimo_balance_anio","")).strip().isdigit()
                        else None,
-                "fext":row["fecha_extraccion"]
+                "fext": row["fecha_extraccion"]
             })
             insertados += 1
     log(f"  ✅ supercias_directorio: {insertados} filas.")

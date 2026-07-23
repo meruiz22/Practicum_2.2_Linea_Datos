@@ -14,7 +14,6 @@
 \usepackage{amsmath,amssymb}
 \usepackage{graphicx}
 \usepackage{url}
-\usepackage{hyperref}
 \usepackage{booktabs}
 \usepackage{array}
 \usepackage{tabularx}
@@ -22,6 +21,7 @@
 \usepackage{microtype}
 \usepackage[section]{placeins}
 \usepackage{float}
+\usepackage{hyperref}
 
 % ── colores IEEE ──────────────────────────────────────────────────────────────
 \definecolor{ieeehead}{gray}{0.20}
@@ -72,133 +72,178 @@ Limpieza, Modelo Relacional y Dashboard Analítico}
 
 % ── abstract ─────────────────────────────────────────────────────────────────
 \begin{abstract}
-
+Este artículo documenta el diseño e implementación de un pipeline de
+datos que integra nueve fuentes públicas del macroentorno ecuatoriano.
+El pipeline sigue el patrón medallón Bronze-Silver-Gold sobre Python y
+PostgreSQL. Extrae datos del Banco Central del Ecuador, el INEC, la
+Superintendencia de Compañías y el Ministerio de Educación. Los
+transforma con cuatro módulos de limpieza independientes y los carga
+en un modelo relacional de 14 tablas. Siete vistas Gold alimentan un
+dashboard en Power BI con tres páginas analíticas. El proceso se
+integra con un sistema de automatización RPA que deposita los datos
+en una tabla consolidada en formato JSON. El reto identifica
+problemas técnicos resueltos durante la implementación y propone
+extensiones para bases de datos heterogéneas y actualizaciones
+automáticas.
 \end{abstract}
 
 \begin{IEEEkeywords}
-
+pipeline de datos, arquitectura medallón, ETL, PostgreSQL, Power BI,
+macroentorno, CRISP-DM, RPA, limpieza de datos
 \end{IEEEkeywords}
 
 % =============================================================================
 \section{Introducción}
 
-El Tablero Macroentorno de la Universidad Técnica Particular de Loja consolida indicadores económicos
-y laborales de nueve fuentes públicas del Ecuador.
-Su actualización es manual y su pipeline carece de documentación
-reproducible.
-Cuando cambia un archivo fuente, el conocimiento para actualizarlo
-vive en personas, no en código.
+El Tablero Macroentorno de la Universidad Técnica Particular de Loja
+consolida indicadores económicos y laborales de nueve fuentes públicas
+del Ecuador. Su actualización es manual y su pipeline carece de
+documentación reproducible. Cuando cambia un archivo fuente, el
+conocimiento para actualizarlo vive en personas, no en código.
 
-El reto de Practicum~2.2 de 6to ciclo resuelve ese problema en
-siete semanas.
-El pipeline parte de los archivos crudos que entrega el equipo de RPA
-y termina en un dashboard con tres preguntas analíticas respondidas.
-El stack es Python, PostgreSQL y Power~BI.
+El reto de Practicum~2.2 de 6to ciclo resuelve ese problema en siete
+semanas. El pipeline parte de los archivos que entrega el equipo de
+RPA y termina en un dashboard con tres preguntas analíticas
+respondidas. El stack es Python, PostgreSQL y Power~BI.
 
-El dashboard responde tres preguntas concretas para la UTPL.
-P1 analiza la evolución económica ecuatoriana de los últimos
-20 años con datos del BCE.
-P2 identifica los sectores y provincias con mayor actividad
-económica y empleo usando VAB, ENEMDU y el Censo 2022.
-P3 cruza bachilleres por provincia (MINEDUC) con empresas
-activas (Supercias) para detectar zonas con demanda potencial
-de educación superior; ese cruce alimenta directamente el
-Tablero de Segmentación de Marketing de la UTPL.
+El dashboard responde tres preguntas concretas para la UTPL. 
+Analiza la evolución económica ecuatoriana de los últimos 20 años con
+datos del BCE. identifica los sectores y provincias con mayor
+actividad económica y empleo usando VAB, ENEMDU y el Censo 2022. 
+Cruza bachilleres por provincia (MINEDUC) con empresas activas
+(Supercias) para detectar zonas con demanda potencial de educación
+superior. Ese cruce alimenta el Tablero de Segmentación de Marketing
+de la UTPL.
 
-Construir ese pipeline requiere competencias que el mercado
-demanda con urgencia.
-El Future of Jobs Report 2025 proyecta que la demanda de
-especialistas en Big~Data crece más del 100\% entre 2025
-y 2030~\cite{wef2025}.
-La UTPL forma a esos especialistas con datos reales,
-fuentes públicas y decisiones técnicas concretas.
+Construir ese pipeline requiere competencias que el mercado demanda.
+El Future of Jobs Report 2025 proyecta que la demanda de especialistas
+en Big~Data crece más del 100\% entre 2025 y 2030~\cite{wef2025}.
+La UTPL forma a esos especialistas con datos reales, fuentes públicas
+y decisiones técnicas concretas.
 
-El estado del arte responde cuatro preguntas vinculadas a los
-entregables del reto:
-\begin{itemize}
-  \item \textbf{P1.} Qué arquitectura integra fuentes heterogéneas
-        de datos públicos en un pipeline reproducible.
-  \item \textbf{P2.} Cómo se diseña el modelo relacional antes de
-        escribir código.
-  \item \textbf{P3.} Qué stack técnico y prácticas de limpieza son
-        críticos para cargar fuentes heterogéneas correctamente.
-  \item \textbf{P4.} Cómo se integra el pipeline con un proceso de
-        automatización y que anticipa ese patrón para 2025--2030.
-\end{itemize}
+El resto de este documento se organiza así.
+La Sección~II define los conceptos que sostienen la arquitectura.
+La Sección~III describe la arquitectura del pipeline.
+La Sección~IV detalla la metodología aplicada.
+La Sección~V revisa los trabajos relacionados.
+La Sección~VI presenta el stack técnico.
+La Sección~VII discute las tendencias del campo para 2025--2030.
+La Sección~VIII reporta los resultados obtenidos.
+La Sección~IX identifica limitaciones y trabajo futuro.
+La Sección~X presenta las conclusiones.
 
-La Fig.~\ref{fig:arquitectura} resume la arquitectura completa del
-pipeline, con las tres capas del patrón medallón y su integración
-con el proceso de automatización RPA.
+% =============================================================================
+\section{Marco Conceptual}
+
+Esta sección define los conceptos que sostienen la arquitectura,
+desde el almacenamiento de datos hasta el pipeline que los mueve
+entre capas.
+
+\textbf{Data Warehouse.}
+Repositorio central de datos históricos estructurados, integrados
+desde múltiples fuentes y optimizados para consultas
+analíticas~\cite{nambiar2022}. Transforma los datos antes de
+cargarlos (ETL) y mantiene esquemas fijos.
+
+\textbf{Data Lake.}
+Almacén de datos en formato crudo sobre almacenamiento de objetos de
+bajo costo~\cite{azzabi2024}. Acepta datos estructurados,
+semi-estructurados y no estructurados sin transformación previa.
+Requiere metadatos activos para mantener la rastreabilidad.
+
+\textbf{Data Lakehouse.}
+Arquitectura que une la flexibilidad del Data Lake con las garantías
+transaccionales del Data Warehouse~\cite{harby2022}. Soporta cargas
+analíticas y de machine learning sin mover datos entre sistemas.
+
+\textbf{Arquitectura Medallón (Bronze-Silver-Gold).}
+Patrón de tres zonas de calidad progresiva dentro de un
+Lakehouse~\cite{databricks2024}. Bronze guarda los datos en estado
+original. Silver aplica limpieza, tipado y normalización. Gold
+materializa vistas listas para el dashboard. En el reto, Bronze
+recibe los archivos de RPA, Silver los almacena en PostgreSQL con
+14 tablas y FK correctas, y Gold expone siete vistas para Power~BI.
+
+\textbf{ETL y ELT.}
+ETL extrae, transforma y carga en ese orden~\cite{nambiar2022}.
+ELT carga primero y transforma dentro del motor de
+destino~\cite{machado2022}. El reto sigue ELT: cada módulo Python
+carga en PostgreSQL y las vistas Gold transforman ahí mismo.
+
+\textbf{Pipeline de datos.}
+Secuencia automatizada de pasos que mueve y transforma datos desde
+las fuentes hasta el destino~\cite{naso2024}. El pipeline del reto
+es reproducible: detecta registros nuevos automáticamente y los
+procesa sin intervención manual.
+
+\textbf{Modelo Entidad-Relación (ER).}
+Representación gráfica de entidades, atributos y relaciones de un
+dominio~\cite{barret2025}. Define la estructura antes de escribir
+código.
+
+\textbf{CRISP-DM.}
+Metodología de referencia para proyectos de minería de datos y
+ciencia de datos. Define seis fases: comprensión del negocio,
+comprensión de los datos, preparación de los datos, modelado,
+evaluación y despliegue. El reto aplica esta metodología de forma
+implícita: las semanas 1 a 4 corresponden a las tres primeras fases y
+las semanas 5 a 7 cubren modelado, evaluación y despliegue.
+
+% =============================================================================
+\section{Arquitectura del Pipeline}
+
+La Fig.~\ref{fig:arquitectura} muestra la arquitectura completa del
+pipeline. El diseño sigue el patrón medallón con tres capas y se
+integra con el proceso de automatización RPA.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\columnwidth,height=0.32\textheight,keepaspectratio]{arquitectura_pipeline.png}
   %%\imgplaceholder{Arquitectura Bronze-Silver-Gold con integración RPA}{4.2cm}
   \caption{Arquitectura del pipeline del Macroentorno Ecuador.
-    Bronze almacena los archivos crudos de RPA. Python los
-    transforma y carga en PostgreSQL. Las vistas Gold alimentan
-    la visualización en Power~BI.}
+    Bronze almacena los archivos de RPA. Python transforma y carga
+    en PostgreSQL. Las vistas Gold alimentan Power~BI.}
   \label{fig:arquitectura}
 \end{figure}
 
+La capa Bronze recibe los archivos sin modificarlos. El equipo de
+RPA los deposita en una tabla intermedia con trece indicadores
+distintos, en formato JSON. La capa Silver aplica limpieza y carga
+los datos en 14 tablas relacionales. La capa Gold expone siete
+vistas optimizadas para el dashboard.
+
+El sistema RPA usa n8n para cuatro flujos automáticos: diario para
+petróleo y riesgo país, mensual para IEE y Supercias, trimestral
+para ENEMDU, y anual para PIB, VAB, MINEDUC y Censo. Cada flujo
+identifica el indicador, guarda su valor y calcula un código que
+detecta cambios, lo que evita reprocesar registros sin
+modificaciones.
+
 % =============================================================================
-\section{Marco Conceptual}
+\section{Metodología}
 
-Esta sección define los conceptos que sostienen esa arquitectura,
-desde el almacenamiento de los datos hasta el pipeline que los mueve
-entre capas.
+El reto aplica CRISP-DM en siete semanas.
+La primera semana cubre la comprensión del negocio: el diseño del
+diagrama ER y la definición de las tres preguntas del dashboard.
+Las semanas dos y tres cubren la comprensión y preparación de los
+datos, con la descarga de las nueve fuentes, la limpieza en cuatro
+módulos Python y la resolución de nueve problemas técnicos.
+La semana cuatro completa la preparación de datos con la carga en
+PostgreSQL, la creación de las 14 tablas y las siete vistas Gold, y
+el acuerdo de integración con RPA.
+Las semanas cinco y seis corresponden al modelado y la evaluación,
+con la construcción del dashboard en Power~BI y la validación de
+sus tres páginas analíticas.
+La séptima semana cierra el despliegue: documentación técnica,
+configuración del cron para la automatización y la demo final.
 
-\textbf{Data Warehouse.}
-Repositorio central de datos históricos estructurados, integrados desde
-múltiples fuentes y optimizados para consultas
-analíticas~\cite{nambiar2022}.
-Transforma los datos antes de cargarlos (ETL) y mantiene esquemas fijos.
-
-\textbf{Data Lake.}
-Almacén de datos en formato crudo sobre almacenamiento de objetos de
-bajo costo~\cite{azzabi2024}.
-Acepta datos estructurados, semi-estructurados y no estructurados sin
-transformación previa.
-Requiere metadatos activos para mantener la rastreabilidad de cada
-archivo.
-
-\textbf{Data Lakehouse.}
-Arquitectura que une la flexibilidad del Data Lake con las garantías
-transaccionales del Data Warehouse en una sola
-plataforma~\cite{harby2022}.
-Soporta cargas analíticas y de machine learning sin mover datos entre
-sistemas.
-
-\textbf{Arquitectura Medallón (Bronze--Silver--Gold).}
-Patrón de tres zonas de calidad progresiva dentro de un
-Lakehouse~\cite{databricks2024}.
-Bronze guarda los datos en su estado original e inmutable.
-Silver aplica limpieza, tipado y normalización.
-Gold materializa vistas o tablas derivadas listas para el dashboard.
-En el reto, Bronze recibe los archivos de RPA, Silver los almacena en
-PostgreSQL con doce tablas y FK correctas, y Gold expone cuatro vistas
-para Power~BI.
-
-\textbf{ETL (Extract, Transform, Load).}
-Proceso que extrae datos, los transforma en un motor intermedio y los
-carga ya limpios en el destino~\cite{nambiar2022}.
-Es el patrón clásico del Data Warehouse.
-
-\textbf{ELT (Extract, Load, Transform).}
-Variante que carga los datos en crudo primero y transforma dentro del
-motor de destino~\cite{machado2022}.
-El reto sigue ELT: cada módulo Python carga en PostgreSQL y las vistas
-Gold transforman ahí mismo.
-
-\textbf{Pipeline de datos.}
-Secuencia automatizada de pasos que mueve y transforma datos desde
-las fuentes hasta el destino~\cite{naso2024}.
-El pipeline del reto es reproducible: \texttt{pipeline.py} detecta
-archivos nuevos de RPA y los procesa sin intervención manual.
-
-\textbf{Modelo Entidad-Relación (ER).}
-Representación gráfica de entidades, atributos y relaciones de un
-dominio~\cite{barret2025}.
+Las fuentes del reto incluyen cinco archivos del BCE (PIB real, PIB
+nominal, VAB cantonal, petróleo y IEE), dos del INEC (ENEMDU y Censo
+2022), dos de Supercias (ranking y directorio) y uno de MINEDUC
+(AMIE 2023-2024). Cada fuente tiene un módulo Python independiente
+que encapsula su lógica de limpieza. Esta separación sigue el
+principio de responsabilidad única y facilita el mantenimiento cuando
+una fuente cambia su formato.
 
 % =============================================================================
 \section{Trabajos Relacionados}
@@ -216,109 +261,92 @@ las decisiones técnicas del reto.
 \rowcolor{ieeehead}
 \textcolor{white}{\textbf{Ref.}} &
 \textcolor{white}{\textbf{Aporte}} &
-\textcolor{white}{\textbf{Conexión directa con el reto}} \\
+\textcolor{white}{\textbf{Conexión con el reto}} \\
 \midrule
 \rowcolor{ieeegray}
 \cite{azzabi2024} &
-Documenta el Lakehouse: storage y ACID &
+Lakehouse: storage y ACID &
 Bronze recibe archivos de RPA. Silver en PostgreSQL aplica ACID. \\
 %
 \cite{harby2022} &
-Sin metadatos y linaje el repositorio se degrada &
-Cada módulo documenta sus decisiones de limpieza: nulos, tipos y
-deduplicación. \\
+Sin metadatos el repositorio se degrada &
+Cada módulo documenta sus decisiones de limpieza. \\
 %
 \rowcolor{ieeegray}
 \cite{nambiar2022} &
-Revisa la metodología dimensional de Kimball &
-Define \texttt{dim\_tiempo}, \texttt{dim\_geografia} y las doce
+Metodología dimensional de Kimball &
+Define las dimensiones compartidas y las 14
 tablas Silver con FK. \\
 %
 \cite{machado2022} &
 ELT: cada fuente propietaria de su lógica &
-\texttt{bce.py}, \texttt{inec.py}, \texttt{supercias.py} y
-\texttt{mineduc.py} encapsulan la limpieza de su fuente. \\
+Cuatro módulos Python encapsulan la limpieza de su fuente. \\
 %
 \rowcolor{ieeegray}
 \cite{bhardwaj2024} &
-RPA optimiza ingestión; contratos críticos &
-El acuerdo de semana~4 fija subcarpeta, formato de nombre y canal
-de notificación. \\
+RPA optimiza ingestión &
+El acuerdo de semana~4 fija subcarpeta, formato y canal de
+notificación. \\
 %
 \cite{barret2025} &
-Grafos ER son el estándar de BD modernas &
-El tutor aprueba el diagrama ER en semana~1 (10\% evaluación) antes
-de que el estudiante escriba código. \\
+Grafos ER como estándar de BD &
+El diagrama ER se aprueba en semana~1 antes de escribir código. \\
 %
 \rowcolor{ieeegray}
 \cite{tadakala2025} &
 Párrafo interpretativo supera a la estética &
-6to ciclo exige un párrafo de análisis ejecutivo por página del
-dashboard. \\
+6to ciclo exige un párrafo de análisis por página del dashboard. \\
 %
 \cite{lai2025} &
 Preparación de datos consume $>$70\% del tiempo &
-Las semanas~1 a~4 se dedican a limpieza y modelo. Power~BI se conecta
-en semana~5. \\
+Las semanas~1 a~4 se dedican a limpieza y modelo. \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-Azzabi et al.~\cite{azzabi2024} documentan la evolución del Lakehouse,
-formalizado originalmente por Armbrust et al. en CIDR~2021, hacia una
-arquitectura que combina almacenamiento económico con garantías
-transaccionales ACID.
-Jain et al.~\cite{jain2023} compararon Delta~Lake, Hudi e Iceberg:
-Delta~Lake lidera en velocidad de carga; Iceberg ofrece mayor
-interoperabilidad.
+Azzabi et al.~\cite{azzabi2024} documentan la evolución del Lakehouse
+hacia una arquitectura con garantías transaccionales ACID. Jain
+et al.~\cite{jain2023} compararon Delta~Lake, Hudi e Iceberg: Delta
+lidera en velocidad de carga; Iceberg ofrece mayor interoperabilidad.
 Harby y Zulkernine~\cite{harby2022} confirman que documentar el
-linaje y los metadatos de cada archivo es lo que separa una
-arquitectura lakehouse madura de una improvisada.
-Nambiar y Mundra~\cite{nambiar2022} revisan la metodología dimensional
-de Kimball en el contexto actual de data warehouse y data lake.
-Barret et al.~\cite{barret2025} confirman que el diagrama~ER sigue
-siendo la herramienta estándar para comunicar un diseño relacional
-antes de implementarlo.
-Machado et al.~\cite{machado2022} describen el paso de ETL a ELT en
-el contexto Data~Mesh: cada fuente es propietaria de su lógica de
-limpieza.
-Bhardwaj et al.~\cite{bhardwaj2024} demuestran que RPA escala el
-procesamiento de datos estructurados cuando los contratos de interfaz
-son precisos.
-Lai et al.~\cite{lai2025} miden que la preparación de datos consume
-más del 70\% del tiempo en proyectos de BI.
-Tadakala et al.~\cite{tadakala2025} demuestran que los dashboards con
-párrafo interpretativo por página superan en efectividad a los que
-priorizan la presentación visual.
+linaje de cada archivo separa una arquitectura madura de una
+improvisada. Nambiar y Mundra~\cite{nambiar2022} revisan la
+metodología dimensional de Kimball en el contexto actual. Barret
+et al.~\cite{barret2025} confirman que el diagrama ER es la
+herramienta estándar para comunicar un diseño relacional antes de
+implementarlo. Machado et al.~\cite{machado2022} describen el paso de
+ETL a ELT en el contexto Data~Mesh. Bhardwaj
+et al.~\cite{bhardwaj2024} demuestran que RPA escala cuando los
+contratos de interfaz son precisos. Lai et al.~\cite{lai2025} miden
+que la preparación de datos consume más del 70\% del tiempo en
+proyectos de BI. Tadakala et al.~\cite{tadakala2025} demuestran que
+los dashboards con párrafo interpretativo superan en efectividad a
+los puramente visuales.
 
 % =============================================================================
 \section{Herramientas y Stack Técnico}
 
 El reto define un stack de tres capas: Python transforma, PostgreSQL
-almacena y Power~BI visualiza.
-Antes de que ese stack procese un solo archivo, el reto exige
-diseñar el modelo relacional que sostiene las tablas Silver.
+almacena y Power~BI visualiza. Antes de que ese stack procese un solo
+archivo, el reto exige diseñar el modelo relacional que sostiene las
+tablas Silver.
 
-La Fig.~\ref{fig:er} presenta ese modelo ER.
-Muestra las doce tablas con sus claves primarias y foráneas.
-\texttt{dim\_tiempo} y \texttt{dim\_geografia} se comparten entre las
-nueve fuentes.
-Las tablas de hechos (\texttt{fact\_macro\_anual},
-\texttt{fact\_empleo}, \texttt{fact\_indicadores\_diarios} y las de
-VAB, IEE, Supercias y MINEDUC) referencian esas dimensiones con FK.
+La Fig.~\ref{fig:er} presenta ese modelo ER. Muestra las 14 tablas
+con sus claves primarias y foráneas. Dos dimensiones, tiempo y
+geografía, se comparten entre las nueve fuentes. Las tablas de
+hechos referencian esas dimensiones con FK.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\columnwidth,height=0.32\textheight,keepaspectratio]{modelo_er_silver.png}
   %%\imgplaceholder{Modelo ER -- Capa Silver (PostgreSQL)}{4.6cm}
   \caption{Modelo entidad-relación de la capa Silver del reto.
-    \texttt{dim\_tiempo} y \texttt{dim\_geografia} son dimensiones
-    compartidas. Cada tabla \texttt{fact\_} referencia ambas con FK.}
+    Las dimensiones de tiempo y geografía se comparten entre las
+    fuentes. Cada tabla de hechos referencia ambas con FK.}
   \label{fig:er}
 \end{figure}
 
-La Tabla~\ref{tab:stack} detalla el rol de cada herramienta en el
-pipeline.
+La Tabla~\ref{tab:stack} detalla el rol de cada herramienta.
 
 \begin{table}[H]
 \caption{Herramientas del stack técnico}
@@ -333,41 +361,45 @@ pipeline.
 \midrule
 \rowcolor{ieeegray}
 Python + pandas &
-Lenguaje y biblioteca para leer, limpiar y transformar datos
-tabulares dentro de scripts de extracción y carga. \\
+Lee, limpia y transforma datos tabulares dentro de cuatro módulos
+de extracción y carga independientes. \\
 %
-PostgreSQL &
-Sistema de gestión de bases de datos relacionales, con soporte
-para vistas, particionamiento y tipos de dato JSONB. \\
+PostgreSQL 18 &
+Almacena las 14 tablas relacionales y expone siete vistas Gold
+mediante consultas SQL con soporte JSONB. \\
 %
 \rowcolor{ieeegray}
 Power BI Desktop &
-Herramienta de Microsoft para construir dashboards interactivos
-y conectarse a fuentes de datos mediante DirectQuery. \\
+Construye tres páginas analíticas y se conecta a PostgreSQL via
+DirectQuery para mostrar datos actualizados. \\
 %
 GitHub &
-Plataforma de control de versiones basada en Git, con
-repositorios públicos o privados y flujos de integración continua. \\
+Controla versiones de los scripts Python, SQL y documentación del
+pipeline con repositorio privado. \\
 %
 \rowcolor{ieeegray}
+n8n &
+Orquesta los cuatro flujos automáticos de RPA que depositan los
+datos en formato JSON. \\
+%
 draw.io &
-Herramienta gratuita en línea para crear diagramas de
-arquitectura, flujos de proceso y modelos entidad-relación. \\
+Genera los diagramas de arquitectura y el modelo ER antes de
+implementar el código. \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-Python procesa cada fuente con un módulo independiente.
+Python procesa cada fuente con un módulo independiente. El script
 \texttt{inec.py} aplica \texttt{melt()} para normalizar la estructura
-pivotada de ENEMDU.
-\texttt{mineduc.py} lee el AMIE con \texttt{encoding=latin-1} y
-separador \texttt{;}, y filtra por bachillerato de último grado.
-\texttt{bce.py} convierte las fechas del IEE con
-\texttt{pd.to\_datetime()} y carga los cinco archivos del BCE.
-PostgreSQL recibe las doce tablas Silver con FK correctas y expone
-cuatro vistas Gold.
-Power~BI conecta esas vistas vía DirectQuery y construye las tres
-páginas del dashboard.
+pivotada de ENEMDU. El script \texttt{mineduc.py} lee el AMIE con
+\texttt{header=10} y calcula \texttt{bach3\_total} sumando los campos
+de género. El script \texttt{bce.py} convierte las fechas del IEE con
+\texttt{pd.to\_datetime()} y carga los cinco archivos del BCE. El
+script \texttt{cargar\_rpa.py} convierte la sintaxis Oracle a
+PostgreSQL antes de insertar los datos del RPA. PostgreSQL recibe las
+14 tablas Silver con FK correctas y expone siete vistas Gold.
+Power~BI conecta esas vistas y construye las tres páginas del
+dashboard.
 
 % =============================================================================
 \section{Tendencias y Futuro}
@@ -388,24 +420,22 @@ datos para 2025--2030.
 \midrule
 \rowcolor{ieeegray}
 IA Generativa en pipelines &
-Automatiza partes de la limpieza y la imputación de datos, aunque
-el juicio sobre nulos y tipos de dato sigue siendo del
+Automatiza partes de la limpieza y la imputación, pero el juicio
+sobre nulos y tipos de dato sigue siendo del
 desarrollador~\cite{lai2025}. \\
 %
 DataOps continuo &
 Convierte la calidad de dato en parte del flujo de entrega, con
-pruebas dentro del pipeline en lugar de después de
-él~\cite{foidl2024}. \\
+pruebas dentro del pipeline~\cite{foidl2024}. \\
 %
 \rowcolor{ieeegray}
 Convergencia RPA-Datos &
-RPA ingesta fuentes que no ofrecen API, y el contrato de interfaz
-entre equipos se vuelve el punto crítico del
-proceso~\cite{bhardwaj2024}. \\
+RPA ingesta fuentes sin API. El contrato de interfaz entre equipos
+es el punto crítico~\cite{bhardwaj2024}. \\
 %
 Data Mesh &
-Trata cada fuente como un producto de dato con un propietario y un
-nivel de servicio definidos~\cite{machado2022}. \\
+Trata cada fuente como un producto de dato con propietario y nivel
+de servicio definidos~\cite{machado2022}. \\
 %
 \rowcolor{ieeegray}
 Dashboards con análisis ejecutivo &
@@ -415,82 +445,173 @@ que un dashboard puramente visual~\cite{tadakala2025}. \\
 \end{tabularx}
 \end{table}
 
-La IA~Generativa automatiza partes de la limpieza, pero la
-decisión de cómo normalizar ENEMDU con \texttt{melt()} o cómo tratar
-el primer año de variación nula del PIB real requiere juicio del
-estudiante~\cite{wef2025}.
-Foidl et al.~\cite{foidl2024} identifican 41 factores que influyen en
-la calidad de un pipeline de datos y ubican la etapa de limpieza como
-la principal fuente de errores, lo que confirma que DataOps convierte
-la calidad de dato en parte del flujo de entrega.
-El WEF proyecta más del 100\% de crecimiento en demanda de especialistas
-en datos para 2030~\cite{wef2025}.
-Las habilidades que el reto desarrolla, diseño ER, limpieza de fuentes
-reales y storytelling analítico, son las que el mercado demanda.
+La IA~Generativa automatiza partes de la limpieza, pero la decisión
+de cómo normalizar ENEMDU con \texttt{melt()} o cómo tratar el
+primer año de variación nula del PIB real requiere juicio del
+desarrollador~\cite{wef2025}. Foidl et al.~\cite{foidl2024}
+identifican 41 factores que influyen en la calidad de un pipeline y
+ubican la limpieza como la principal fuente de errores. El WEF
+proyecta más del 100\% de crecimiento en demanda de especialistas en
+datos para 2030~\cite{wef2025}.
+
+% =============================================================================
+\section{Resultados}
+
+El pipeline completó la carga de las nueve fuentes públicas sin
+errores. La Tabla~\ref{tab:resultados} presenta los conteos finales
+por tabla.
+
+\begin{table}[H]
+\caption{Conteos de filas por tabla Silver tras la carga completa}
+\label{tab:resultados}
+\renewcommand{\arraystretch}{1.3}
+\footnotesize
+\begin{tabularx}{\columnwidth}{L{3.8cm} X}
+\toprule
+\rowcolor{ieeehead}
+\textcolor{white}{\textbf{Tabla}} &
+\textcolor{white}{\textbf{Filas cargadas}} \\
+\midrule
+\rowcolor{ieeegray}
+\texttt{tab\_consolidado} & 1.949.463 \\
+\texttt{dim\_tiempo} & 8.005 \\
+\rowcolor{ieeegray}
+\texttt{dim\_geografia} & 247 \\
+\texttt{pib\_real} & 60 (1965--2024) \\
+\rowcolor{ieeegray}
+\texttt{pib\_nominal} & 60 (2000--2025) \\
+\texttt{petroleo\_riesgo} & 7.962 (diario) \\
+\rowcolor{ieeegray}
+\texttt{iee} & 196 (mensual) \\
+\texttt{enemdu} & 1.872 (trimestral) \\
+\rowcolor{ieeegray}
+\texttt{vab\_cantonal} & 16.575 \\
+\texttt{censo\_actividad} & 78.452 \\
+\rowcolor{ieeegray}
+\texttt{censo\_ocupacion} & 39.226 \\
+\texttt{mineduc\_amie} & 16.250 \\
+\rowcolor{ieeegray}
+\texttt{supercias\_directorio} & 223.797 \\
+\textbf{Total} & \textbf{$\approx$394.000 filas analíticas} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+La resolución de los nueve problemas técnicos consumió el mayor
+tiempo del proyecto. Tres de ellos surgieron por diferencias de
+sintaxis entre Oracle y PostgreSQL. Dos surgieron por inconsistencias
+en la estructura del JSON del RPA. Los cuatro restantes surgieron por
+características propias de cada fuente, como el sufijo provisional
+\texttt{P} en los años del BCE o la ausencia del campo
+\texttt{anio} en los registros VAB cantonal.
+
+El dashboard generó siete vistas Gold, dos de ellas propuestas por
+el estudiante de 6to ciclo: \texttt{gold\_iee\_vs\_pib} y
+\texttt{gold\_vab\_por\_sector}. La primera muestra que el
+IEE anticipa con un año de adelanto los cambios en la variación del
+PIB. La segunda identifica las provincias con mayor concentración
+económica y los sectores que las lideran.
+
+La página P3 del dashboard produce la métrica de mayor valor
+estratégico para la UTPL. El ratio bachilleres por empresa activa
+identifica Zamora Chinchipe, Bolívar y Carchi como las provincias
+con mayor demanda potencial de educación superior.
+
+La Fig.~\ref{fig:dashboard} muestra esa página del dashboard.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\columnwidth,height=0.32\textheight,keepaspectratio]{dashboard_powerbi.png}
+  \caption{Página P3 del dashboard: bachilleres por provincia frente
+    a empresas activas (Supercias). Zamora Chinchipe, Bolívar y
+    Carchi muestran la mayor demanda potencial.}
+  \label{fig:dashboard}
+\end{figure}
+
+% =============================================================================
+\section{Limitaciones y Sugerencias}
+
+El reto identifica tres limitaciones que abren trabajo futuro.
+
+\textbf{Fuente única de base de datos.}
+El pipeline usa solo PostgreSQL. Fuentes como el SRI o el BCE
+distribuyen datos en Oracle, MongoDB o archivos Excel con macros.
+Un pipeline robusto necesita conectores para múltiples motores de
+base de datos. SQLAlchemy soporta Oracle, MySQL y SQLite con el
+mismo código. Agregar un conector Oracle permitiría consumir
+directamente las exportaciones del RPA sin convertir la sintaxis.
+
+\textbf{VAB cantonal sin año.}
+El RPA deposita los registros de \texttt{VAB\_CANTONAL\_CIIU} con
+\texttt{anio: null} en todos los casos. La vista
+\texttt{gold\_vab\_por\_sector} opera sin dimensión temporal. Cuando
+el equipo RPA corrija el flujo anual, el pipeline procesará las
+series históricas sin cambios en el código de transformación.
+
+\textbf{Actualización de Power BI.}
+El dashboard requiere actualización manual. Power BI Service con
+un Gateway de datos y un cron en Ubuntu que ejecute
+\texttt{pipeline.py} a las 06:00 cada mañana resuelve ese problema.
+El cron ya existe en el repositorio; falta la configuración del
+Gateway.
+
+\textbf{Planes a futuro.}
+Tres extensiones aumentan el valor del sistema. Primero, agregar
+pruebas automáticas con \texttt{pytest} que verifiquen los conteos
+esperados por tabla después de cada carga. Segundo, conectar el
+pipeline al SRI para cruzar los datos de empresas activas con su
+recaudación tributaria por provincia. Tercero, publicar el modelo
+en Power BI Service para que cualquier usuario de la UTPL acceda al
+dashboard sin instalar Power BI Desktop.
 
 % =============================================================================
 \section{Conclusiones}
 
-\subsection{P1. Arquitectura para integrar fuentes heterogéneas
-en un pipeline reproducible}
+\subsection{Arquitectura para integrar fuentes heterogéneas}
 
-La arquitectura Lakehouse con patrón medallón Bronze--Silver--Gold
+La arquitectura Lakehouse con patrón medallón Bronze-Silver-Gold
 organiza el pipeline en tres zonas de calidad
 progresiva~\cite{azzabi2024,databricks2024}
-(Fig.~\ref{fig:arquitectura}).
-Bronze recibe los archivos de las fuentes públicas sin modificarlos.
-Python los transforma y los carga en tablas relacionales en PostgreSQL.
-Las vistas Gold alimentan Power~BI con indicadores listos para
-el dashboard.
-El repositorio GitHub con módulos versionados garantiza que cualquier
-miembro del equipo reproduce el resultado.
-Harby y Zulkernine~\cite{harby2022} confirman que documentar el
-linaje y los metadatos de cada decisión de limpieza es lo que
+(Fig.~\ref{fig:arquitectura}). Bronze recibe los archivos sin
+modificarlos. Python los transforma y los carga en PostgreSQL. Las
+vistas Gold alimentan Power~BI. El repositorio GitHub con módulos
+versionados garantiza que cualquier miembro del equipo reproduce el
+resultado. Harby y Zulkernine~\cite{harby2022} confirman que
+documentar el linaje de cada decisión de limpieza es lo que
 diferencia un repositorio útil de uno inutilizable.
 
-\subsection{P2. Modelo relacional diseñado antes de escribir código}
+\subsection{Modelo relacional diseñado antes de escribir código}
 
-La metodología dimensional de cuatro pasos (proceso de negocio,
-granularidad, dimensiones y métricas), revisada por Nambiar y
-Mundra~\cite{nambiar2022} en el contexto actual de data warehouse y
-data lake, ordena el diseño del modelo relacional.
-El esquema resultante tiene dimensiones compartidas entre las fuentes
-y tablas de hechos con FK correctas (Fig.~\ref{fig:er}).
-Barret et al.~\cite{barret2025} confirman que el diagrama~ER comunica
-el diseño antes de que el código exista.
-El tutor aprueba ese diagrama al inicio del proyecto.
-Cada error detectado en el diagrama es un error que no aparece
-en la base de datos.
+La metodología dimensional de cuatro pasos revisada por Nambiar y
+Mundra~\cite{nambiar2022} ordena el diseño del modelo relacional. El
+esquema resultante tiene dimensiones compartidas entre las fuentes y
+tablas de hechos con FK correctas (Fig.~\ref{fig:er}). Barret
+et al.~\cite{barret2025} confirman que el diagrama~ER comunica el
+diseño antes de que el código exista. Cada error detectado en el
+diagrama es un error que no aparece en la base de datos.
 
-\subsection{P3. Stack técnico y prácticas de limpieza para fuentes
-heterogéneas}
+\subsection{Stack técnico y limpieza de fuentes heterogéneas}
 
 Python procesa cada fuente con un módulo independiente que encapsula
-su lógica de limpieza: renombrado de columnas, tratamiento de nulos,
-conversión de tipos y normalización de fechas.
-PostgreSQL almacena las tablas relacionales y expone vistas Gold
-listas para DirectQuery.
-Power~BI construye tres páginas analíticas que responden las preguntas
-P1, P2 y P3 del dashboard.
-Lai et al.~\cite{lai2025} miden que más del 70\% del tiempo de un
-proyecto de BI va a preparación de datos.
-Dedicar la mayor parte del trabajo a la limpieza y al modelo antes
-de conectar la herramienta de visualización es la práctica que
+su lógica de limpieza. PostgreSQL almacena las tablas relacionales y
+expone vistas Gold listas para DirectQuery. Power~BI construye tres
+páginas analíticas. Lai et al.~\cite{lai2025} miden que más del
+70\% del tiempo de un proyecto de BI va a preparación de datos.
+Dedicar las semanas 1 a 4 a la limpieza y al modelo antes de
+conectar la herramienta de visualización es la práctica que
 distingue proyectos de BI exitosos de los que fallan en producción.
 
-\subsection{P4. Integración con automatización y perspectiva 2025-2030}
+\subsection{Integración con automatización y perspectiva 2025-2030}
 
-La integración entre el pipeline de datos y un proceso de
-automatización requiere un contrato de interfaz preciso: nombre de
-carpeta, formato de archivo y canal de notificación.
-Bhardwaj et al.~\cite{bhardwaj2024} demuestran que la automatización
-escala cuando esos contratos son precisos.
-El pipeline detecta los archivos nuevos y los procesa sin
-intervención manual (Fig.~\ref{fig:arquitectura}).
-Para 2030, el Data~Mesh y DataOps consolidan un modelo donde cada
-fuente es un producto de dato con propietario y SLA~\cite{machado2022}.
-El estudiante que termina este reto practica ese modelo con datos
-reales desde el primer día.
+La integración entre el pipeline y el sistema RPA requiere un
+contrato de interfaz preciso: indicador, formato JSON, dato clave y
+hash de contenido. Bhardwaj et al.~\cite{bhardwaj2024} demuestran
+que la automatización escala cuando esos contratos son precisos.
+El pipeline detecta los registros nuevos automáticamente y los
+procesa sin intervención manual
+(Fig.~\ref{fig:arquitectura}). Para 2030, el Data~Mesh y DataOps
+consolidan un modelo donde cada fuente es un producto de dato con
+propietario y SLA~\cite{machado2022}.
 
 % =============================================================================
 \begin{thebibliography}{13}
