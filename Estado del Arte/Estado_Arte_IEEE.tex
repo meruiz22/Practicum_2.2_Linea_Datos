@@ -83,8 +83,8 @@ dashboard en Power BI con tres páginas analíticas. El proceso se
 integra con un sistema de automatización RPA que deposita los datos
 en una tabla consolidada en formato JSON. El reto identifica
 problemas técnicos resueltos durante la implementación y propone
-extensiones para bases de datos heterogéneas y actualizaciones
-automáticas.
+extensiones para bases de datos heterogéneas y mayor escalabilidad
+ante nuevas fuentes.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -95,16 +95,17 @@ macroentorno, CRISP-DM, RPA, limpieza de datos
 % =============================================================================
 \section{Introducción}
 
-El Tablero Macroentorno de la Universidad Técnica Particular de Loja
-consolida indicadores económicos y laborales de nueve fuentes públicas
-del Ecuador. Su actualización es manual y su pipeline carece de
-documentación reproducible. Cuando cambia un archivo fuente, el
-conocimiento para actualizarlo vive en personas, no en código.
+El reto de Practicum~2.2 de 6to ciclo pide construir el Tablero
+Macroentorno de la Universidad Técnica Particular de Loja, que
+consolidará indicadores económicos y laborales de nueve fuentes
+públicas del Ecuador. Hoy ese proceso es manual: cuando cambia un
+archivo fuente, el conocimiento para actualizarlo vive en personas,
+no en código.
 
-El reto de Practicum~2.2 de 6to ciclo resuelve ese problema en siete
-semanas. El pipeline parte de los archivos que entrega el equipo de
-RPA y termina en un dashboard con tres preguntas analíticas
-respondidas. El stack es Python, PostgreSQL y Power~BI.
+El reto resuelve ese problema en siete semanas. El pipeline parte
+de los archivos que entrega el equipo de RPA y termina en un
+dashboard con tres preguntas analíticas respondidas. El stack es
+Python, PostgreSQL y Power~BI.
 
 El dashboard responde tres preguntas concretas para la UTPL. 
 Analiza la evolución económica ecuatoriana de los últimos 20 años con
@@ -112,8 +113,7 @@ datos del BCE. identifica los sectores y provincias con mayor
 actividad económica y empleo usando VAB, ENEMDU y el Censo 2022. 
 Cruza bachilleres por provincia (MINEDUC) con empresas activas
 (Supercias) para detectar zonas con demanda potencial de educación
-superior. Ese cruce alimenta el Tablero de Segmentación de Marketing
-de la UTPL.
+superior.
 
 Construir ese pipeline requiere competencias que el mercado demanda.
 El Future of Jobs Report 2025 proyecta que la demanda de especialistas
@@ -212,12 +212,11 @@ distintos, en formato JSON. La capa Silver aplica limpieza y carga
 los datos en 14 tablas relacionales. La capa Gold expone siete
 vistas optimizadas para el dashboard.
 
-El sistema RPA usa n8n para cuatro flujos automáticos: diario para
-petróleo y riesgo país, mensual para IEE y Supercias, trimestral
-para ENEMDU, y anual para PIB, VAB, MINEDUC y Censo. Cada flujo
-identifica el indicador, guarda su valor y calcula un código que
-detecta cambios, lo que evita reprocesar registros sin
-modificaciones.
+El sistema RPA usa n8n para orquestar flujos automáticos, cada uno
+con una frecuencia de extracción ajustada al ritmo de actualización
+de su fuente. Cada flujo identifica el indicador, guarda su valor y
+calcula un código que detecta cambios, lo que evita reprocesar
+registros sin modificaciones.
 
 % =============================================================================
 \section{Metodología}
@@ -235,7 +234,7 @@ Las semanas cinco y seis corresponden al modelado y la evaluación,
 con la construcción del dashboard en Power~BI y la validación de
 sus tres páginas analíticas.
 La séptima semana cierra el despliegue: documentación técnica,
-configuración del cron para la automatización y la demo final.
+configuración de la automatización y la demo final.
 
 Las fuentes del reto incluyen cinco archivos del BCE (PIB real, PIB
 nominal, VAB cantonal, petróleo y IEE), dos del INEC (ENEMDU y Censo
@@ -370,7 +369,7 @@ mediante consultas SQL con soporte JSONB. \\
 %
 \rowcolor{ieeegray}
 Power BI Desktop &
-Construye tres páginas analíticas y se conecta a PostgreSQL via
+Construye tres páginas analíticas y se conecta a PostgreSQL vía
 DirectQuery para mostrar datos actualizados. \\
 %
 GitHub &
@@ -379,7 +378,7 @@ pipeline con repositorio privado. \\
 %
 \rowcolor{ieeegray}
 n8n &
-Orquesta los cuatro flujos automáticos de RPA que depositan los
+Orquesta los flujos automáticos de RPA que depositan los
 datos en formato JSON. \\
 %
 draw.io &
@@ -389,17 +388,16 @@ implementar el código. \\
 \end{tabularx}
 \end{table}
 
-Python procesa cada fuente con un módulo independiente. El script
-\texttt{inec.py} aplica \texttt{melt()} para normalizar la estructura
-pivotada de ENEMDU. El script \texttt{mineduc.py} lee el AMIE con
-\texttt{header=10} y calcula \texttt{bach3\_total} sumando los campos
-de género. El script \texttt{bce.py} convierte las fechas del IEE con
-\texttt{pd.to\_datetime()} y carga los cinco archivos del BCE. El
-script \texttt{cargar\_rpa.py} convierte la sintaxis Oracle a
-PostgreSQL antes de insertar los datos del RPA. PostgreSQL recibe las
-14 tablas Silver con FK correctas y expone siete vistas Gold.
-Power~BI conecta esas vistas y construye las tres páginas del
-dashboard.
+Python procesa cada fuente con un módulo independiente. El módulo de
+INEC normaliza la estructura pivotada de ENEMDU. El módulo de MINEDUC
+lee el AMIE y calcula el total de bachilleres por género. El módulo
+del BCE convierte las fechas del IEE y carga los cinco archivos de
+esa fuente. El módulo de Supercias limpia el ranking y el directorio
+de empresas activas. Antes de la carga, un paso adicional adapta la
+sintaxis de Oracle a PostgreSQL en los datos que llegan del RPA.
+PostgreSQL recibe las 14 tablas Silver con FK correctas y expone
+siete vistas Gold. Power~BI conecta esas vistas y construye las tres
+páginas del dashboard.
 
 % =============================================================================
 \section{Tendencias y Futuro}
@@ -446,9 +444,9 @@ que un dashboard puramente visual~\cite{tadakala2025}. \\
 \end{table}
 
 La IA~Generativa automatiza partes de la limpieza, pero la decisión
-de cómo normalizar ENEMDU con \texttt{melt()} o cómo tratar el
+de cómo normalizar una estructura pivotada o cómo tratar el
 primer año de variación nula del PIB real requiere juicio del
-desarrollador~\cite{wef2025}. Foidl et al.~\cite{foidl2024}
+desarrollador. Foidl et al.~\cite{foidl2024}
 identifican 41 factores que influyen en la calidad de un pipeline y
 ubican la limpieza como la principal fuente de errores. El WEF
 proyecta más del 100\% de crecimiento en demanda de especialistas en
@@ -480,10 +478,10 @@ por tabla.
 \texttt{pib\_real} & 60 (1965--2024) \\
 \rowcolor{ieeegray}
 \texttt{pib\_nominal} & 60 (2000--2025) \\
-\texttt{petroleo\_riesgo} & 7.962 (diario) \\
+\texttt{petroleo\_riesgo} & 7.962 \\
 \rowcolor{ieeegray}
-\texttt{iee} & 196 (mensual) \\
-\texttt{enemdu} & 1.872 (trimestral) \\
+\texttt{iee} & 196 \\
+\texttt{enemdu} & 1.872 \\
 \rowcolor{ieeegray}
 \texttt{vab\_cantonal} & 16.575 \\
 \texttt{censo\_actividad} & 78.452 \\
@@ -506,8 +504,8 @@ características propias de cada fuente, como el sufijo provisional
 \texttt{anio} en los registros VAB cantonal.
 
 El dashboard generó siete vistas Gold, dos de ellas propuestas por
-el estudiante de 6to ciclo: \texttt{gold\_iee\_vs\_pib} y
-\texttt{gold\_vab\_por\_sector}. La primera muestra que el
+el estudiante de 6to ciclo: una vista compara el IEE con el PIB, y
+otra cruza el VAB por sector económico. La primera muestra que el
 IEE anticipa con un año de adelanto los cambios en la variación del
 PIB. La segunda identifica las provincias con mayor concentración
 económica y los sectores que las lideran.
@@ -531,7 +529,7 @@ La Fig.~\ref{fig:dashboard} muestra esa página del dashboard.
 % =============================================================================
 \section{Limitaciones y Sugerencias}
 
-El reto identifica tres limitaciones que abren trabajo futuro.
+El reto identifica dos limitaciones que abren trabajo futuro.
 
 \textbf{Fuente única de base de datos.}
 El pipeline usa solo PostgreSQL. Fuentes como el SRI o el BCE
@@ -541,28 +539,20 @@ base de datos. SQLAlchemy soporta Oracle, MySQL y SQLite con el
 mismo código. Agregar un conector Oracle permitiría consumir
 directamente las exportaciones del RPA sin convertir la sintaxis.
 
-\textbf{VAB cantonal sin año.}
-El RPA deposita los registros de \texttt{VAB\_CANTONAL\_CIIU} con
-\texttt{anio: null} en todos los casos. La vista
-\texttt{gold\_vab\_por\_sector} opera sin dimensión temporal. Cuando
-el equipo RPA corrija el flujo anual, el pipeline procesará las
-series históricas sin cambios en el código de transformación.
-
-\textbf{Actualización de Power BI.}
-El dashboard requiere actualización manual. Power BI Service con
-un Gateway de datos y un cron en Ubuntu que ejecute
-\texttt{pipeline.py} a las 06:00 cada mañana resuelve ese problema.
-El cron ya existe en el repositorio; falta la configuración del
-Gateway.
+\textbf{Escalabilidad para nuevas fuentes.}
+Cada fuente nueva requiere un módulo de limpieza hecho a la medida.
+El pipeline no tiene un conector genérico que reduzca ese trabajo
+repetitivo. Un framework de ingesta configurable, con reglas de
+limpieza declarativas en lugar de código, aceleraría la
+incorporación de futuras fuentes.
 
 \textbf{Planes a futuro.}
-Tres extensiones aumentan el valor del sistema. Primero, agregar
-pruebas automáticas con \texttt{pytest} que verifiquen los conteos
-esperados por tabla después de cada carga. Segundo, conectar el
-pipeline al SRI para cruzar los datos de empresas activas con su
-recaudación tributaria por provincia. Tercero, publicar el modelo
-en Power BI Service para que cualquier usuario de la UTPL acceda al
-dashboard sin instalar Power BI Desktop.
+Dos extensiones aumentan el valor del sistema. Primero, integrar la
+automatización de RPA directamente en el pipeline, en lugar de
+mantenerlos como dos sistemas separados que se comunican por
+archivos. Segundo, migrar a una plataforma unificada como Microsoft
+Fabric o Databricks, que reduciría la cantidad de herramientas
+distintas del stack.
 
 % =============================================================================
 \section{Conclusiones}

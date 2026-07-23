@@ -1,0 +1,16 @@
+[Unit]
+Description=Webhook Macroentorno Pipeline
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=mar
+WorkingDirectory=/home/mar/Documentos/Practicum 2.2/Practicum_2.2_Linea_Datos/macroentorno_pipeline
+ExecStart=/home/mar/Documentos/Practicum 2.2/Practicum_2.2_Linea_Datos/macroentorno_pipeline/venv_datos/bin/python scripts/webhook.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/mar/Documentos/Practicum 2.2/Practicum_2.2_Linea_Datos/macroentorno_pipeline/logs/webhook.log
+StandardError=append:/home/mar/Documentos/Practicum 2.2/Practicum_2.2_Linea_Datos/macroentorno_pipeline/logs/webhook.log
+
+[Install]
+WantedBy=multi-user.target
