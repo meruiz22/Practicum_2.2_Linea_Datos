@@ -40,9 +40,7 @@ eggs/
 .ipynb_checkpoints/
 *.ipynb
 
-# ── Power BI ──
-*.pbix
-*.pbit
+
 
 # ── IDEs ──
 .vscode/
