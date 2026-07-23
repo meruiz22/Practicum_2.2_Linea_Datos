@@ -193,9 +193,9 @@ silver_iee         → dim_tiempo    silver_censo_actividad → dim_geografia
 | 2 — Limpieza BCE | `transform/bce.py` + 5 tablas Silver | ✅ Scripts listos |
 | 3 — Limpieza INEC/Supercias/MINEDUC | 3 scripts + 5 tablas Silver | ✅ Scripts listos |
 | 4 — Modelo relacional + vistas Gold | `create_tables.sql` + `gold_views.sql` | ✅ Completa |
-| 5 — Dashboard P1/P2 + integración RPA | Power BI + `pipeline.py` | ⬜ Pendiente |
-| 6 — Dashboard P3 + refinamiento | Página P3 + párrafos análisis | ⬜ Pendiente |
-| 7 — Documentación + demo | Informe técnico + presentación | ⬜ Pendiente |
+| 5 — Dashboard P1/P2 + integración RPA | Power BI + `pipeline.py` | ✅ Completa|
+| 6 — Dashboard P3 + refinamiento | Página P3 + párrafos análisis | ✅ Completa |
+| 7 — Documentación + demo | Informe técnico + presentación | ✅ Completa |
 
 ---
 
