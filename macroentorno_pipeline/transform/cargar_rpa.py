@@ -10,7 +10,6 @@ Problemas Oracle que resuelve:
      '\"{\\\"key\\\":\\\"val\\\"}\"'  → '{"key":"val"}'
   3. ID como NUMBER                   → BIGINT (se omite, es SERIAL)
   4. Columnas entre comillas dobles   → minúsculas sin comillas
-
 """
 
 import re
